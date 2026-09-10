@@ -56,6 +56,17 @@ bash scripts/deploy-via-compose.sh
 
 Baseline lokal pada 10 September 2026 memakai ruang lingkup production. Pada eksekusi validasi terakhir, Composer melaporkan 53 advisory pada 17 paket dan npm melaporkan 14 advisory (2 critical, 8 high, 3 moderate, dan 1 low); 25 advisory berada pada ambang high atau critical. Basis data advisory dapat berubah, sehingga setiap eksekusi menyimpan ringkasan JSON bertimestamp dan hasil skripsi akan memakai snapshot yang dicantumkan pada bab pengujian. Temuan ini tidak langsung diklaim sebagai kerentanan yang dapat dieksploitasi pada SITA; setiap paket akan dikelompokkan menurut keterpaparan runtime, jalur pemanggilan aplikasi, ketersediaan versi perbaikan, serta hasil regresi setelah pembaruan.
 
+### Validasi lintas lingkungan
+
+Pada 10 September UTC atau 11 September 2026 WITA, audit dijalankan pada dua laboratorium dengan ambang `high`. Mode `report` selesai tanpa menghentikan proses dan mode `enforce` mengembalikan exit code 1 pada kedua lingkungan karena terdapat 25 advisory high atau critical. Hasil ini memverifikasi perilaku blokir, bukan membuktikan bahwa semua advisory dapat dieksploitasi pada aplikasi.
+
+| Lingkungan | Runtime audit | Mode laporan | Mode enforce | Kondisi layanan sesudah uji |
+| --- | --- | --- | --- | --- |
+| Docker | Container Composer dan Node sementara; source hanya-baca | `report` | Ditolak, exit 1 | `/up` HTTP 200, 6 container berjalan |
+| aaPanel | Host; Composer 2 sementara terverifikasi untuk audit | `report` | Ditolak, exit 1 | `/up` HTTP 200, PHP-FPM dan Reverb aktif |
+
+Dua temuan portabilitas dicatat sebagai bagian hasil penelitian. Host Docker tidak menyediakan PHP, Composer, maupun npm, sehingga audit harus dijalankan dalam container sementara. Sebaliknya, aaPanel menyediakan toolchain tetapi Composer global belum mempunyai perintah `audit`; fallback Composer sementara yang diverifikasi checksum diperlukan. Kedua kondisi tersebut menunjukkan mengapa pemeriksaan yang hanya diasumsikan berjalan pada satu lingkungan tidak cukup untuk deployment SITA.
+
 Pada aaPanel, bila konfigurasi vhost dibaca oleh root, jalankan gate lewat sudo dan berikan lokasi vhost pada `NGINX_CONFIG`. Hal ini membuat pemeriksaan statis merepresentasikan konfigurasi aktif, bukan hanya template di repositori.
 
 ## Perbaikan yang diterapkan
