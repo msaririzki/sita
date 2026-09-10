@@ -45,7 +45,9 @@ restore_env() {
 
 cleanup() {
     restore_env
-    [[ -n "$nginx_fixture" ]] && rm -f "$nginx_fixture"
+    if [[ -n "$nginx_fixture" ]]; then
+        rm -f "$nginx_fixture"
+    fi
 }
 trap cleanup EXIT
 
