@@ -109,4 +109,5 @@ COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY public ./public
 COPY --from=assets /var/www/html/public/build ./public/build
 
-RUN rm -f /var/www/html/public/hot
+RUN rm -f /var/www/html/public/hot \
+    && ln -s /var/www/html/storage/app/public /var/www/html/public/storage

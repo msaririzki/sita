@@ -30,3 +30,8 @@ if [[ -n "${HEALTHCHECK_URL:-}" ]]; then
     echo "Healthcheck failed after retries"
     exit 1
 fi
+
+if [[ "${RUN_INTEGRATION_GATE:-false}" = "true" ]]; then
+    echo "Running Docker integration gate..."
+    bash scripts/docker-integration-gate.sh
+fi

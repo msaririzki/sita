@@ -54,6 +54,14 @@ Catatan penting:
 - Untuk environment server/CI, override nilai sensitif (`APP_KEY`, password DB, dsb) lewat secret/variable pipeline.
 - Saat pertama kali naik, service `init` akan otomatis menjalankan migrasi dan cache (`config:cache`, `route:cache`, `view:cache`).
 
+Validasi pascadeploy Docker:
+
+```bash
+HEALTHCHECK_URL=http://127.0.0.1:8088/up bash scripts/docker-integration-gate.sh
+```
+
+Gate memeriksa container, health HTTP, akses storage Laravel dan Nginx, bundle Reverb, serta WebSocket handshake. Untuk menjalankannya otomatis di akhir `scripts/deploy-via-compose.sh`, tambahkan `RUN_INTEGRATION_GATE=true`.
+
 Matikan stack:
 
 ```bash
