@@ -257,6 +257,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Perbaikan regresi E2E:** judul halaman dosen dan placeholder pencarian berubah menjadi `Pesan Dosen` dan `Cari grup...`; selektor E2E dibuat kompatibel terhadap bentuk lama maupun baru. Skenario chat lama juga diperketat supaya tidak me-refresh atau menavigasi ulang halaman penerima sebelum memeriksa pesan.
 - **Makna skripsi:** gate deployment perlu tingkat bertahap: service aktif -> upgrade WebSocket -> koneksi browser -> subscription kanal privat -> pertukaran pesan dua pengguna. Tingkat terakhir memberikan bukti fungsi yang tidak dapat digantikan oleh pengecekan port atau health endpoint.
 
+### E-26 - Preflight dan pemeriksaan service rutin dipisahkan
+
+- **Masalah rancangan:** pemasangan unit service aaPanel adalah kebutuhan instalasi awal, sedangkan pemeriksaan status PHP-FPM, Reverb, queue, dan scheduler diperlukan pada setiap pembaruan. Ketika keduanya memakai satu parameter, update rutin berisiko melewati pemeriksaan service.
+- **Perbaikan:** `INSTALL_SERVICES` tetap khusus pemasangan atau perubahan unit systemd. Parameter baru `CHECK_SERVICES` bernilai `true` secara default untuk Integration Gate. Security Gate juga dapat dipanggil sebagai `RUN_SECURITY_PREFLIGHT=true` sebelum langkah perubahan deployment dan sebagai `RUN_SECURITY_GATE=true` setelah aplikasi aktif.
+- **Validasi lab pada commit `5a8b626`:** preflight aaPanel lulus tanpa kegagalan; Integration Gate aaPanel memverifikasi empat service aktif dan WebSocket `101`; Docker menjalankan preflight, deployment, Integration Gate, dan Security Gate tanpa kegagalan. Kedua endpoint lab menggunakan HTTP sehingga HSTS tercatat sebagai peringatan, bukan kegagalan.
+- **Pengamanan data contoh:** nilai default `RUN_DB_SEED` pada template Docker diubah menjadi `false`. Seeder harus diaktifkan eksplisit pada VM lab yang database-nya kosong; tidak ada `db:seed`, `migrate:fresh`, atau penghapusan tabel pada deployment aaPanel rutin.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.

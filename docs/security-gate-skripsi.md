@@ -17,7 +17,7 @@ Dua temuan baseline yang dapat direproduksi adalah:
 
 ## Artefak implementasi
 
-`scripts/security-gate.sh` dijalankan setelah deployment dan gagal bila kontrol wajib tidak terpenuhi. Pemeriksaannya mencakup:
+`scripts/security-gate.sh` gagal bila kontrol wajib tidak terpenuhi. Pemeriksaannya mencakup:
 
 - `APP_ENV=production`, `APP_DEBUG=false`, serta variabel Reverb wajib;
 - origin Reverb eksplisit tanpa wildcard;
@@ -28,10 +28,18 @@ Dua temuan baseline yang dapat direproduksi adalah:
 - document root, deny dot-file, dan proxy Reverb Nginx;
 - container non-root, tanpa `privileged: true`, dan database tanpa port host.
 
-Gate dipanggil dengan `RUN_SECURITY_GATE=true` dari `scripts/deploy-via-compose.sh` dan `deploy/aapanel-deploy.sh`. Contoh parameter tidak memuat rahasia:
+Gate dapat dipanggil sebagai preflight dengan `RUN_SECURITY_PREFLIGHT=true` atau sebagai pemeriksaan pascadeploy dengan `RUN_SECURITY_GATE=true` dari `scripts/deploy-via-compose.sh` dan `deploy/aapanel-deploy.sh`.
+
+| Tahap | Pemeriksaan | Tujuan keputusan |
+| --- | --- | --- |
+| Preflight | environment production, origin Reverb, permission `.env`, artefak frontend, dan konfigurasi Nginx | menolak rilis sebelum source, dependency, atau migration diubah bila konfigurasi tidak aman |
+| Pascadeploy | seluruh pemeriksaan preflight serta endpoint sensitif dan header HTTP dari aplikasi aktif | membuktikan bahwa kontrol konfigurasi benar-benar berlaku pada endpoint publik |
+
+Pada aaPanel, pemasangan unit service dan pemeriksaan status service dipisahkan. `INSTALL_SERVICES=true` hanya dipakai untuk instalasi awal atau perubahan unit systemd; `CHECK_SERVICES=true` tetap memeriksa PHP-FPM, Reverb, queue, dan scheduler pada setiap deployment rutin. Contoh parameter tidak memuat rahasia:
 
 ```bash
-PUBLIC_BASE_URL=https://host-sita.example RUN_SECURITY_GATE=true \
+PUBLIC_BASE_URL=https://host-sita.example \
+RUN_SECURITY_PREFLIGHT=true RUN_SECURITY_GATE=true \
 bash scripts/deploy-via-compose.sh
 ```
 
