@@ -4,8 +4,9 @@
 
 **Implementasi dan Evaluasi Security Gate Berbasis DevSecOps untuk Meningkatkan Keamanan Deployment Sistem Informasi Tugas Akhir pada Lingkungan Docker dan aaPanel**
 
-**Mahasiswa:** Muhamad Sari Rizki  
-**NIM:** `[diisi]`  
+**Mahasiswa:** Muhamad Sari Rizki
+
+**NIM:** `[diisi]`
 **Program Studi:** S1 Ilmu Komputer, Fakultas Teknik, Universitas Bumigora
 
 ## Latar Belakang
