@@ -74,9 +74,22 @@ check_env_permission() {
 
 check_compiled_assets() {
     local hits
-    if [[ ! -d public/build ]]; then warn "public/build belum ada; pemeriksaan artefak frontend dilewati."; return; fi
-    hits="$(grep -R -I -l -E 'APP_KEY=|DB_PASSWORD=|REVERB_APP_SECRET=' public/build 2>/dev/null || true)"
-    if [[ -n "$hits" ]]; then fail "Artefak frontend memuat pola rahasia server."; else pass "Artefak frontend tidak memuat pola rahasia server."; fi
+    if [[ -d public/build ]]; then
+        hits="$(grep -R -I -l -E 'APP_KEY=|DB_PASSWORD=|REVERB_APP_SECRET=' public/build 2>/dev/null || true)"
+        if [[ -n "$hits" ]]; then fail "Artefak frontend memuat pola rahasia server."; else pass "Artefak frontend tidak memuat pola rahasia server."; fi
+        return
+    fi
+
+    if [[ "$CHECK_DOCKER" = "true" ]] && command -v docker >/dev/null 2>&1 && docker compose -f docker-compose.yml -f docker-compose.deploy.yml exec -T app test -d /var/www/html/public/build >/dev/null 2>&1; then
+        if docker compose -f docker-compose.yml -f docker-compose.deploy.yml exec -T app sh -c "! grep -R -I -l -E 'APP_KEY=|DB_PASSWORD=|REVERB_APP_SECRET=' /var/www/html/public/build >/dev/null 2>&1"; then
+            pass "Artefak frontend container tidak memuat pola rahasia server."
+        else
+            fail "Artefak frontend container memuat pola rahasia server."
+        fi
+        return
+    fi
+
+    warn "public/build belum ada dan container aplikasi tidak dapat diperiksa."
 }
 
 http_status() { curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$1" 2>/dev/null || true; }
