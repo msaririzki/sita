@@ -93,6 +93,31 @@ check_health() {
     fi
 }
 
+check_public_storage() {
+    local marker storage_url response
+
+    marker=".sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
+    storage_url="${HEALTHCHECK_URL%/up}/storage/${marker}"
+
+    if [ "$(id -un)" = "$PHP_FPM_RUNTIME_USER" ]; then
+        printf '%s' "$marker" > "storage/app/public/${marker}"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -n -u "$PHP_FPM_RUNTIME_USER" sh -c 'printf "%s" "$1" > "storage/app/public/$1"' sh "$marker"
+    else
+        fail "Tidak dapat membuat marker sebagai user runtime PHP-FPM"
+        return
+    fi
+
+    response="$(curl -fsS "$storage_url" 2>/dev/null || true)"
+    rm -f "storage/app/public/${marker}"
+
+    if [ "$response" = "$marker" ]; then
+        ok "Nginx menyajikan public storage dari runtime Laravel"
+    else
+        fail "Marker public storage tidak dapat diakses melalui Nginx"
+    fi
+}
+
 check_frontend_reverb_bundle() {
     local host
 
@@ -177,6 +202,7 @@ fi
 if [ -f .env ]; then
     check_runtime_write_access
     check_health
+    check_public_storage
 
     if [ "$CHECK_SERVICES" = "true" ]; then
         if command -v systemctl >/dev/null 2>&1; then

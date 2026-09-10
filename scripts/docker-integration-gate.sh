@@ -93,10 +93,28 @@ check_frontend_bundle() {
 }
 
 check_storage_route() {
-    if compose exec -T web sh -c 'test -L /var/www/html/public/storage && test -d /var/www/html/public/storage'; then
-        ok "Nginx web memiliki symlink dan volume public storage"
-    else
+    local marker storage_url response
+
+    if ! compose exec -T web sh -c 'test -L /var/www/html/public/storage && test -d /var/www/html/public/storage'; then
         fail "Nginx web tidak dapat menyajikan public storage"
+        return
+    fi
+
+    marker=".sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
+    storage_url="${HEALTHCHECK_URL%/up}/storage/${marker}"
+
+    if ! compose exec -T -e SITA_GATE_MARKER="$marker" app sh -c 'printf "%s" "$SITA_GATE_MARKER" > "/var/www/html/storage/app/public/$SITA_GATE_MARKER"'; then
+        fail "Runtime Laravel gagal membuat marker public storage"
+        return
+    fi
+
+    response="$(curl -fsS "$storage_url" 2>/dev/null || true)"
+    compose exec -T -e SITA_GATE_MARKER="$marker" app sh -c 'rm -f "/var/www/html/storage/app/public/$SITA_GATE_MARKER"' || true
+
+    if [ "$response" = "$marker" ]; then
+        ok "Nginx web menyajikan public storage dari runtime Laravel"
+    else
+        fail "Marker public storage tidak dapat diakses melalui Nginx"
     fi
 }
 
