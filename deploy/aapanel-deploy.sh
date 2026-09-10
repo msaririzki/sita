@@ -101,8 +101,10 @@ prepare_composer_runtime() {
 }
 
 normalize_generated_filament_assets() {
-    if [ -d public/js/filament ]; then
-        find public/js/filament -type f -name '*.js' -exec sed -i 's/[[:space:]]\+$//' {} +
+    local file_upload_asset='public/js/filament/forms/components/file-upload.js'
+
+    if [ -f "$file_upload_asset" ]; then
+        sed -i 's/[[:space:]]\+$//' "$file_upload_asset"
     fi
 }
 
