@@ -6,7 +6,8 @@ compose_files=(-f docker-compose.yml -f docker-compose.deploy.yml)
 
 if [[ "${RUN_DEPENDENCY_AUDIT:-false}" = "true" ]]; then
     echo "Running production dependency security audit..."
-    bash scripts/dependency-security-audit.sh
+    DEPENDENCY_AUDIT_RUNTIME="${DEPENDENCY_AUDIT_RUNTIME:-docker}" \
+        bash scripts/dependency-security-audit.sh
 fi
 
 echo "Building images locally..."

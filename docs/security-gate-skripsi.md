@@ -39,6 +39,8 @@ bash scripts/deploy-via-compose.sh
 
 Security Gate dikembangkan menjadi dua tahap. Tahap sebelum deployment menjalankan `scripts/dependency-security-audit.sh`; tahap sesudah deployment menjalankan `scripts/security-gate.sh`. Audit dependency hanya memeriksa dependency production: `composer audit --locked --no-dev` untuk PHP dan `npm audit --omit=dev` untuk frontend. Audit tidak mengubah lockfile, memasang dependency, atau menjalankan `audit fix`.
 
+aaPanel menjalankan audit dengan runtime host karena PHP, Composer, dan npm tersedia pada server panel. Host Docker laboratorium tidak membawa tool tersebut; mode `DEPENDENCY_AUDIT_RUNTIME=docker` menjalankan Composer dan npm dalam container sementara, dengan source project dipasang hanya-baca serta direktori laporan saja yang dapat ditulis. Perbedaan ini adalah bagian dari evaluasi portabilitas mekanisme, bukan alasan untuk melewati audit pada Docker.
+
 Mode `report` menyimpan ringkasan JSON dan tidak menghentikan deployment. Mode `enforce` menghentikan deployment bila ditemukan advisory pada atau di atas ambang yang ditentukan. Pemisahan ini penting: temuan harus ditriase dan pembaruan versi harus diuji kompatibilitasnya sebelum dijadikan syarat blokir. Jalankan dengan:
 
 ```bash
