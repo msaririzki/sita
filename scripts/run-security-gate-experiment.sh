@@ -99,7 +99,7 @@ for run_index in $(seq 1 "$EXPERIMENT_RUNS"); do
         CHECK_DOCKER="$CHECK_DOCKER"
 
     set_env_value REVERB_ALLOWED_ORIGINS '*'
-    run_case reverb_origin_wildcard fail 'REVERB_ALLOWED_ORIGINS harus berisi origin eksplisit' \
+    run_case reverb_origin_wildcard fail 'REVERB_ALLOWED_ORIGINS harus berisi hostname eksplisit' \
         SECURITY_GATE_PROFILE=production CHECK_HTTP=false CHECK_DOCKER="$CHECK_DOCKER" NGINX_CONFIG="$NGINX_CONFIG"
     restore_env
     cp -p .env "$env_backup"

@@ -39,7 +39,7 @@ Pada aaPanel, bila konfigurasi vhost dibaca oleh root, jalankan gate lewat sudo 
 
 ## Perbaikan yang diterapkan
 
-Konfigurasi Reverb sekarang membaca `REVERB_ALLOWED_ORIGINS` berbentuk daftar origin yang dipisahkan koma. Nilai laboratorium berisi satu origin antarmuka masing-masing dan tidak menggunakan wildcard. Template serta vhost aaPanel aktif dan konfigurasi Nginx Docker mengirim empat header keamanan. Pada aaPanel perubahan vhost diuji dengan `nginx -t` sebelum reload melalui service aaPanel.
+Konfigurasi Reverb sekarang membaca `REVERB_ALLOWED_ORIGINS` berbentuk daftar hostname yang dipisahkan koma. Reverb membandingkan daftar tersebut dengan hostname hasil `parse_url` dari header `Origin`; karena itu nilai tidak boleh memakai `http://`, `https://`, atau wildcard. Nilai laboratorium berisi hostname antarmuka masing-masing. Template serta vhost aaPanel aktif dan konfigurasi Nginx Docker mengirim empat header keamanan. Pada aaPanel perubahan vhost diuji dengan `nginx -t` sebelum reload melalui service aaPanel.
 
 ## Rancangan evaluasi
 
@@ -47,7 +47,7 @@ Gunakan eksperimen before-after yang sama pada Docker dan aaPanel.
 
 | Skenario gangguan terkontrol | Kondisi awal | Hasil Security Gate yang diharapkan |
 | --- | --- | --- |
-| Origin Reverb wildcard | `REVERB_ALLOWED_ORIGINS=*` | gagal sebelum deployment dinyatakan selesai |
+| Origin Reverb tidak valid | wildcard atau URL lengkap pada `REVERB_ALLOWED_ORIGINS` | gagal sebelum deployment dinyatakan selesai |
 | Debug aktif | `APP_DEBUG=true` | gagal |
 | Endpoint `.env` dapat diakses | aturan deny Nginx dihilangkan pada VM lab | gagal |
 | Header keamanan dihilangkan | empat `add_header` dihilangkan pada VM lab | gagal |

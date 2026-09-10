@@ -55,10 +55,10 @@ check_production_configuration() {
     require_env_value REVERB_APP_KEY
     require_env_value REVERB_APP_SECRET
 
-    if [[ "$PROFILE" = "production" && ( -z "$reverb_origins" || "$reverb_origins" = *"*"* ) ]]; then
-        fail "REVERB_ALLOWED_ORIGINS harus berisi origin eksplisit dan tidak boleh wildcard pada production."
+    if [[ "$PROFILE" = "production" && ( -z "$reverb_origins" || "$reverb_origins" = *"*"* || "$reverb_origins" = *"://"* ) ]]; then
+        fail "REVERB_ALLOWED_ORIGINS harus berisi hostname eksplisit tanpa skema URL dan tanpa wildcard pada production."
     else
-        pass "REVERB_ALLOWED_ORIGINS tidak memakai wildcard pada production."
+        pass "REVERB_ALLOWED_ORIGINS memakai hostname eksplisit tanpa wildcard."
     fi
 }
 
