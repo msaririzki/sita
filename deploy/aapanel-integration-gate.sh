@@ -38,7 +38,7 @@ resolved_env_value() {
 
     value="$(env_value "$1")"
     case "$value" in
-        '\${'*'}')
+        '${'*'}')
             reference="${value#\$\{}"
             reference="${reference%\}}"
             env_value "$reference"
