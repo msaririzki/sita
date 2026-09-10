@@ -60,6 +60,8 @@ Empat skenario yang tidak membutuhkan reload layanan dijalankan ulang melalui `s
 
 Gunakan `SECURITY_EXPERIMENT_RUNS=5` atau lebih untuk pengukuran skripsi. CSV memuat nomor replikasi dan waktu per skenario; laporkan median, rentang, serta tingkat deteksi. Waktu tersebut mengukur durasi Security Gate, bukan latensi aplikasi atau WebSocket.
 
+Untuk memverifikasi header HTTP dari konfigurasi aktif, gunakan `scripts/run-live-nginx-header-experiment.sh` pada VM lab. Script ini membuat cadangan konfigurasi aktif, menghapus `X-Content-Type-Options` sementara, menguji sintaks dan reload Nginx, menjalankan gate, lalu memulihkan konfigurasi melalui `trap`. Pada aaPanel script dijalankan lewat sudo; pada Docker ia hanya mengubah konfigurasi di container `web` yang sedang berjalan.
+
 ## Bukti awal laboratorium
 
 Pada 10 September 2026, konfigurasi aman lulus dengan nol kegagalan pada kedua VM. Keduanya menghasilkan satu peringatan HSTS karena URL laboratorium masih memakai HTTP. Sesudah itu, eksperimen `REVERB_ALLOWED_ORIGINS=*` dijalankan dengan mengubah `.env` sementara tanpa reload layanan, menjalankan gate, lalu memulihkan berkas secara otomatis. Gate menolak konfigurasi tersebut dalam 38 ms pada Docker dan 42 ms pada aaPanel. Setelah pemulihan, origin eksplisit, permission `.env`, endpoint `/up`, serta seluruh service yang relevan kembali tervalidasi.
