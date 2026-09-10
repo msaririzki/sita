@@ -12,7 +12,7 @@ Kategori prioritas:
 - **P2:** transitive dependency severity high yang harus ditelusuri melalui dependency tree.
 - **P3:** medium, low, atau severity tidak diketahui; dicatat dan ditriase setelah P1/P2.
 
-## Ringkasan snapshot
+## Ringkasan snapshot baseline
 
 | Ekosistem | Paket terdampak | Advisory | High/Critical | Catatan |
 | --- | ---: | ---: | ---: | --- |
@@ -69,3 +69,18 @@ Total keputusan mode `enforce` pada ambang `high` adalah 25 advisory. Nilai ini 
 3. Jalankan unit/feature test, `npm run types`, build frontend, Security Gate, dan E2E chat dua pengguna setelah setiap pembaruan.
 4. Bandingkan advisory sebelum dan sesudah pembaruan menggunakan snapshot baru. Laporkan advisory yang tersisa serta alasannya.
 5. Ubah mode audit menjadi `enforce` hanya setelah kebijakan pengecualian dan bukti regresi disetujui pada lingkungan lab.
+
+## Hasil tindakan P1 Composer (11 September 2026 WITA)
+
+Pembaruan dilakukan pada branch terpisah dengan constraint yang sudah ada di `composer.json`; tidak ada perubahan dependency manifest. Perintah yang digunakan adalah `composer update laravel/framework filament/filament --with-all-dependencies --no-scripts --no-interaction`, lalu `composer update paragonie/sodium_compat --with-all-dependencies --no-scripts --no-interaction`. Aset publik Filament dibangkitkan ulang melalui `composer dump-autoload` dan `filament:upgrade`.
+
+| Komponen | Sebelum | Sesudah |
+| --- | --- | --- |
+| `laravel/framework` | v12.53.0 | v12.69.2 |
+| `filament/filament` | v5.2.4 | v5.8.1 |
+| `paragonie/sodium_compat` | v2.5.0 | v2.5.2 |
+| Composer production advisory | 53 | 0 |
+
+Verifikasi lokal: `composer audit --locked --no-dev --format=summary` tidak menemukan advisory; `php artisan test --compact` lulus 255 tes dan 1.946 assertion; `npm run types` dan `npm run build` juga lulus. Perubahan konfigurasi menetapkan `Asia/Makassar` sebagai default dan contoh `APP_TIMEZONE` agar kontrol jadwal Filament tidak berubah delapan jam apabila variabel lingkungan belum ditetapkan.
+
+Audit npm belum ditangani pada tindakan ini: baseline masih 14 advisory, dengan 10 high/critical. Karena itu mode `enforce` untuk audit dependency belum boleh dipakai sebagai syarat deployment sampai paket npm dan klasifikasi `dependencies`/`devDependencies` selesai dievaluasi dan diuji.
