@@ -58,6 +58,8 @@ Setiap gangguan dibuat hanya di VM laboratorium, gate dijalankan, hasil dan wakt
 
 Empat skenario yang tidak membutuhkan reload layanan dijalankan ulang melalui `scripts/run-security-gate-experiment.sh`. Runner membutuhkan konfirmasi eksplisit bahwa target adalah lab, menyimpan CSV dan log, lalu memulihkan `.env` dengan `trap`. Skenario header memakai salinan konfigurasi Nginx, sehingga tidak mengubah vhost aktif. Eksperimen endpoint publik dilakukan terpisah setelah tersedia vhost lab cadangan, karena memerlukan reload Nginx.
 
+Gunakan `SECURITY_EXPERIMENT_RUNS=5` atau lebih untuk pengukuran skripsi. CSV memuat nomor replikasi dan waktu per skenario; laporkan median, rentang, serta tingkat deteksi. Waktu tersebut mengukur durasi Security Gate, bukan latensi aplikasi atau WebSocket.
+
 ## Bukti awal laboratorium
 
 Pada 10 September 2026, konfigurasi aman lulus dengan nol kegagalan pada kedua VM. Keduanya menghasilkan satu peringatan HSTS karena URL laboratorium masih memakai HTTP. Sesudah itu, eksperimen `REVERB_ALLOWED_ORIGINS=*` dijalankan dengan mengubah `.env` sementara tanpa reload layanan, menjalankan gate, lalu memulihkan berkas secara otomatis. Gate menolak konfigurasi tersebut dalam 38 ms pada Docker dan 42 ms pada aaPanel. Setelah pemulihan, origin eksplisit, permission `.env`, endpoint `/up`, serta seluruh service yang relevan kembali tervalidasi.
