@@ -18,6 +18,7 @@ PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 RUN_INTEGRATION_GATE="${RUN_INTEGRATION_GATE:-false}"
+RUN_SECURITY_GATE="${RUN_SECURITY_GATE:-false}"
 AAPANEL_DEPLOY_REEXECUTED="${AAPANEL_DEPLOY_REEXECUTED:-false}"
 
 export PATH="$(dirname "$PHP_BIN"):$PATH"
@@ -304,6 +305,13 @@ if [ "$RUN_INTEGRATION_GATE" = "true" ]; then
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         CHECK_SERVICES="$INSTALL_SERVICES" \
         bash deploy/aapanel-integration-gate.sh
+fi
+
+if [ "$RUN_SECURITY_GATE" = "true" ]; then
+    step "Jalankan DevSecOps security gate"
+    PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}" \
+        NGINX_CONFIG="${NGINX_CONFIG:-}" \
+        bash scripts/security-gate.sh
 fi
 
 printf '\nDeploy selesai untuk %s.\n' "$DOMAIN"
