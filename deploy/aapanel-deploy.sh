@@ -227,6 +227,14 @@ if [ "$GIT_PULL" = "true" ] && [ -d .git ]; then
     fi
 fi
 
+if [ "${RUN_DEPENDENCY_AUDIT:-false}" = "true" ]; then
+    step "Jalankan audit dependency production"
+    PHP_BIN="$PHP_BIN" \
+        COMPOSER_BIN="$COMPOSER_BIN" \
+        NPM_BIN="$NPM_BIN" \
+        bash scripts/dependency-security-audit.sh
+fi
+
 step "Validasi runtime production"
 validate_php_runtime
 validate_node_runtime

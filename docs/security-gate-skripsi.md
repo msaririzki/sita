@@ -32,8 +32,23 @@ Gate dipanggil dengan `RUN_SECURITY_GATE=true` dari `scripts/deploy-via-compose.
 
 ```bash
 PUBLIC_BASE_URL=https://host-sita.example RUN_SECURITY_GATE=true \
-  bash scripts/deploy-via-compose.sh
+bash scripts/deploy-via-compose.sh
 ```
+
+## Lapisan audit dependency sebelum deployment
+
+Security Gate dikembangkan menjadi dua tahap. Tahap sebelum deployment menjalankan `scripts/dependency-security-audit.sh`; tahap sesudah deployment menjalankan `scripts/security-gate.sh`. Audit dependency hanya memeriksa dependency production: `composer audit --locked --no-dev` untuk PHP dan `npm audit --omit=dev` untuk frontend. Audit tidak mengubah lockfile, memasang dependency, atau menjalankan `audit fix`.
+
+Mode `report` menyimpan ringkasan JSON dan tidak menghentikan deployment. Mode `enforce` menghentikan deployment bila ditemukan advisory pada atau di atas ambang yang ditentukan. Pemisahan ini penting: temuan harus ditriase dan pembaruan versi harus diuji kompatibilitasnya sebelum dijadikan syarat blokir. Jalankan dengan:
+
+```bash
+RUN_DEPENDENCY_AUDIT=true \
+DEPENDENCY_AUDIT_MODE=report \
+DEPENDENCY_AUDIT_THRESHOLD=high \
+bash scripts/deploy-via-compose.sh
+```
+
+Baseline lokal pada 10 September 2026 memakai ruang lingkup production. Pada eksekusi validasi terakhir, Composer melaporkan 53 advisory pada 17 paket dan npm melaporkan 14 advisory (2 critical, 8 high, 3 moderate, dan 1 low); 25 advisory berada pada ambang high atau critical. Basis data advisory dapat berubah, sehingga setiap eksekusi menyimpan ringkasan JSON bertimestamp dan hasil skripsi akan memakai snapshot yang dicantumkan pada bab pengujian. Temuan ini tidak langsung diklaim sebagai kerentanan yang dapat dieksploitasi pada SITA; setiap paket akan dikelompokkan menurut keterpaparan runtime, jalur pemanggilan aplikasi, ketersediaan versi perbaikan, serta hasil regresi setelah pembaruan.
 
 Pada aaPanel, bila konfigurasi vhost dibaca oleh root, jalankan gate lewat sudo dan berikan lokasi vhost pada `NGINX_CONFIG`. Hal ini membuat pemeriksaan statis merepresentasikan konfigurasi aktif, bukan hanya template di repositori.
 
