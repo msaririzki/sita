@@ -72,6 +72,16 @@ if command -v "$PHP_BIN" >/dev/null 2>&1; then
     done
 fi
 
+if command -v "$COMPOSER_BIN" >/dev/null 2>&1 && command -v "$PHP_BIN" >/dev/null 2>&1; then
+    COMPOSER_RUNTIME_API_VERSION="$("$COMPOSER_BIN" show -p composer-runtime-api --format=json 2>/dev/null | "$PHP_BIN" -r '$platform = json_decode(stream_get_contents(STDIN), true); echo is_array($platform) ? ($platform["version"] ?? $platform["versions"][0] ?? "") : "";' 2>/dev/null || true)"
+
+    if "$PHP_BIN" -r 'exit(version_compare($argv[1], "2.2.0", ">=") ? 0 : 1);' "$COMPOSER_RUNTIME_API_VERSION" >/dev/null 2>&1; then
+        ok "Composer runtime API ${COMPOSER_RUNTIME_API_VERSION} memenuhi minimal 2.2"
+    else
+        fail "Composer runtime API ${COMPOSER_RUNTIME_API_VERSION:-unknown} belum memenuhi minimal 2.2"
+    fi
+fi
+
 if command -v "$NODE_BIN" >/dev/null 2>&1; then
     NODE_VERSION_STR="$("$NODE_BIN" -p 'process.versions.node' 2>/dev/null || true)"
     if "$NODE_BIN" -e '

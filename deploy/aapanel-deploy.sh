@@ -15,7 +15,9 @@ RUN_QUEUE_RESTART="${RUN_QUEUE_RESTART:-true}"
 INSTALL_SERVICES="${INSTALL_SERVICES:-false}"
 RESTART_PHP_FPM="${RESTART_PHP_FPM:-true}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
+PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
+RUN_INTEGRATION_GATE="${RUN_INTEGRATION_GATE:-false}"
 AAPANEL_DEPLOY_REEXECUTED="${AAPANEL_DEPLOY_REEXECUTED:-false}"
 
 export PATH="$(dirname "$PHP_BIN"):$PATH"
@@ -149,6 +151,25 @@ restart_php_fpm() {
     printf 'Lewati restart PHP-FPM: service %s tidak ditemukan.\n' "$service_name"
 }
 
+prepare_runtime_permissions() {
+    local runtime_group="$PHP_FPM_RUNTIME_GROUP"
+
+    if ! getent group "$runtime_group" >/dev/null 2>&1; then
+        printf 'Group runtime PHP-FPM tidak ditemukan: %s\n' "$runtime_group" >&2
+        exit 1
+    fi
+
+    mkdir -p storage/app/public storage/app/private storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+
+    if command -v sudo >/dev/null 2>&1; then
+        sudo chgrp -R "$runtime_group" storage bootstrap/cache
+    else
+        chgrp -R "$runtime_group" storage bootstrap/cache
+    fi
+
+    chmod -R ug+rwX storage bootstrap/cache
+}
+
 run_healthcheck() {
     if [ -z "$HEALTHCHECK_URL" ]; then
         return 0
@@ -233,8 +254,7 @@ step "Build frontend production"
 rm -f public/hot
 
 step "Siapkan storage dan permission"
-mkdir -p storage/app/public storage/app/private storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
-chmod -R ug+rw storage bootstrap/cache
+prepare_runtime_permissions
 "$PHP_BIN" artisan storage:link --force
 
 step "Bersihkan cache bootstrap lama"
@@ -274,6 +294,17 @@ step "Matikan maintenance mode"
 APP_WAS_DOWN=0
 
 run_healthcheck
+
+if [ "$RUN_INTEGRATION_GATE" = "true" ]; then
+    step "Jalankan integration gate aaPanel"
+    DOMAIN="$DOMAIN" \
+        PHP_BIN="$PHP_BIN" \
+        PHP_FPM_SERVICE="$(derive_php_fpm_service || true)" \
+        PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-$PHP_FPM_RUNTIME_GROUP}" \
+        HEALTHCHECK_URL="$HEALTHCHECK_URL" \
+        CHECK_SERVICES="$INSTALL_SERVICES" \
+        bash deploy/aapanel-integration-gate.sh
+fi
 
 printf '\nDeploy selesai untuk %s.\n' "$DOMAIN"
 printf 'Pastikan aaPanel Nginx root mengarah ke: %s/public\n' "$PROJECT_ROOT"

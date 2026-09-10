@@ -184,6 +184,27 @@ bash deploy/aapanel-deploy.sh
 
 Jika nama service PHP-FPM aaPanel berbeda, isi `PHP_FPM_SERVICE`. Jika restart PHP-FPM dikelola manual oleh panel, pakai `RESTART_PHP_FPM=false`.
 
+Jika PHP-FPM memakai group selain `www`, isi `PHP_FPM_RUNTIME_GROUP` agar `storage/` dan `bootstrap/cache/` dapat ditulis oleh proses PHP-FPM:
+
+```bash
+PHP_FPM_RUNTIME_GROUP=www DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
+```
+
+## Integration Gate Pascadeploy
+
+Gunakan gate ini setelah setiap update untuk membuktikan aplikasi siap dipakai, bukan hanya script deploy sudah selesai. Gate memeriksa permission user PHP-FPM, health endpoint HTTP, status service, konfigurasi host Reverb pada bundle frontend, dan WebSocket handshake melalui Nginx.
+
+```bash
+DOMAIN=sita.kampus.ac.id \
+PHP_BIN=/www/server/php/84/bin/php \
+PHP_FPM_SERVICE=php-fpm-84 \
+PHP_FPM_RUNTIME_USER=www \
+HEALTHCHECK_URL=https://sita.kampus.ac.id/up \
+bash deploy/aapanel-integration-gate.sh
+```
+
+Untuk menjalankannya otomatis di akhir deploy, tambahkan `RUN_INTEGRATION_GATE=true`. Sertakan `INSTALL_SERVICES=true` bila layanan Reverb, queue, dan scheduler juga dikelola oleh script.
+
 Deploy lengkap sekaligus memasang service Reverb, queue worker, dan scheduler systemd:
 
 ```bash
@@ -213,7 +234,7 @@ RUN_MIGRATIONS=false DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
 Gunakan template `deploy/aapanel-nginx.conf`. Ganti:
 
 - `DOMAIN` menjadi domain production.
-- `root /www/wwwroot/DOMAIN/public;` menjadi path production.
+- `PROJECT_ROOT` menjadi folder checkout production yang sebenarnya, misalnya `/www/wwwroot/sita.kampus.ac.id`. Jangan menyamakan nama folder dengan domain bila keduanya berbeda.
 
 Untuk panel admin Filament, pastikan request `/livewire/*` diteruskan ke Laravel. Jika aaPanel masih memakai rule static bawaan untuk `.js`/`.css`, tambahkan blok ini sebelum rule static asset:
 
