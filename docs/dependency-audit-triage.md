@@ -86,3 +86,15 @@ Verifikasi lokal: `composer audit --locked --no-dev --format=summary` tidak mene
 Validasi deployment pada kedua VM lab juga lulus. Docker dan aaPanel sama-sama melaporkan Composer 0 advisory; healthcheck HTTP, public storage, bundle Reverb, dan WebSocket upgrade lulus melalui Integration Gate. Security Gate lulus dengan 0 kegagalan; satu peringatan HSTS muncul karena pengujian memakai URL HTTP internal lab. Pada aaPanel ditemukan dua hambatan nyata: ekstensi PHP `zip` sudah terpasang tetapi belum aktif, dan Composer global v2.0.14 tidak memenuhi Runtime API v2.2 yang dipersyaratkan lockfile baru. Ekstensi `zip` kemudian diaktifkan pada PHP 8.4 CLI dan FPM. Skrip deployment kini memverifikasi Composer global dan bila perlu memakai Composer 2 sementara yang checksum-nya diverifikasi, tanpa mengubah Composer global aaPanel. Satu aset hasil generator Filament dinormalisasi setelah `composer install` agar proses generator tidak meninggalkan perubahan source yang tidak bermakna.
 
 Audit npm belum ditangani pada tindakan ini: baseline masih 14 advisory, dengan 10 high/critical. Karena itu mode `enforce` untuk audit dependency belum boleh dipakai sebagai syarat deployment sampai paket npm dan klasifikasi `dependencies`/`devDependencies` selesai dievaluasi dan diuji.
+
+## Hasil tindakan P1 npm (11 September 2026 WITA)
+
+Tool build dan kualitas yang sebelumnya salah dicatat sebagai `dependencies` dipindahkan ke `devDependencies`: `concurrently`, Vite, plugin Vite/Tailwind, TypeScript, type definitions React, `globals`, dan Laravel Vite plugin. Docker maupun aaPanel tetap memasangnya pada tahap build melalui `npm ci`; paket tersebut tidak diperlukan oleh runtime hasil deploy. Dependensi runtime Inertia, Echo, Socket.IO, React, dan komponen UI tetap berada pada `dependencies`.
+
+| Tahap | Advisory production (`npm audit --omit=dev`) | High/Critical |
+| --- | ---: | ---: |
+| Baseline | 14 | 10 |
+| Setelah klasifikasi build tool | 6 | 4 |
+| Setelah pembaruan runtime | 0 | 0 |
+
+Lockfile mengunci perbaikan runtime untuk `axios` 1.20.0, `form-data` 4.0.6, `qs` 6.16.0, `engine.io-client` 6.6.6, `socket.io-parser` 4.2.7, dan `ws` 8.21.3 melalui `overrides`. Vite diperbarui ke 7.3.6 dan `concurrently` ke 9.2.4 dalam major yang sama. `npm ci`, `npm run types`, dan `npm run build` lulus setelah pembaruan. Audit seluruh dependency masih mencatat 8 advisory transitive pada tool pengembangan; temuan tersebut tidak mengubah hasil audit production dan tetap menjadi backlog maintenance, bukan alasan untuk mengaktifkan pengecualian pada gate produksi.
