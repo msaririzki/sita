@@ -96,7 +96,7 @@ check_health() {
 check_public_storage() {
     local marker storage_url response
 
-    marker=".sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
+    marker="sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
     storage_url="${HEALTHCHECK_URL%/up}/storage/${marker}"
 
     if [ "$(id -un)" = "$PHP_FPM_RUNTIME_USER" ]; then

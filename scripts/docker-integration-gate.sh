@@ -100,7 +100,7 @@ check_storage_route() {
         return
     fi
 
-    marker=".sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
+    marker="sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
     storage_url="${HEALTHCHECK_URL%/up}/storage/${marker}"
 
     if ! compose exec -T -e SITA_GATE_MARKER="$marker" app sh -c 'printf "%s" "$SITA_GATE_MARKER" > "/var/www/html/storage/app/public/$SITA_GATE_MARKER"'; then
