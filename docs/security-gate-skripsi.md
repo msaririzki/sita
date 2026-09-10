@@ -79,3 +79,7 @@ Pada hari yang sama, runner dijalankan lima kali pada setiap lingkungan. Semua k
 | `Permissions-Policy` hilang pada konfigurasi salinan | 487 ms | 56 ms |
 
 Angka tersebut adalah waktu eksekusi gate, bukan waktu respons aplikasi. Docker memeriksa artefak frontend di dalam container sehingga jalur pemeriksaannya lebih berat daripada aaPanel. Karena itu, hasil awal dipakai untuk menunjukkan konsistensi deteksi dalam tiap lingkungan, bukan untuk menyimpulkan aaPanel lebih cepat daripada Docker.
+
+### Verifikasi header pada konfigurasi Nginx aktif
+
+Eksperimen live menghapus `X-Content-Type-Options` dari Nginx aktif secara sementara pada VM lab, menjalankan `nginx -t` dan reload, lalu menjalankan Security Gate. Gate menolak kondisi tersebut dengan alasan header hilang dalam 235 ms pada Docker dan 490 ms pada aaPanel. Konfigurasi asli kemudian dipulihkan, Nginx direload kembali, dan `/up` kembali menghasilkan HTTP 200 dengan header `X-Content-Type-Options: nosniff` pada kedua lingkungan.
