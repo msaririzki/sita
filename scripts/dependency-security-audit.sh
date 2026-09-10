@@ -13,6 +13,7 @@ NPM_BIN="${NPM_BIN:-npm}"
 RUNTIME="${DEPENDENCY_AUDIT_RUNTIME:-host}"
 COMPOSER_AUDIT_IMAGE="${COMPOSER_AUDIT_IMAGE:-composer:2}"
 NPM_AUDIT_IMAGE="${NPM_AUDIT_IMAGE:-node:22-alpine}"
+COMPOSER_AUDIT_ATTEMPTS="${COMPOSER_AUDIT_ATTEMPTS:-3}"
 MODE="${DEPENDENCY_AUDIT_MODE:-report}"
 THRESHOLD="${DEPENDENCY_AUDIT_THRESHOLD:-high}"
 REPORT_DIR="${DEPENDENCY_AUDIT_REPORT_DIR:-storage/app/security-gate-audits}"
@@ -29,6 +30,11 @@ fi
 
 if [[ "$RUNTIME" != 'host' && "$RUNTIME" != 'docker' ]]; then
     printf 'DEPENDENCY_AUDIT_RUNTIME harus host atau docker.\n' >&2
+    exit 2
+fi
+
+if [[ ! "$COMPOSER_AUDIT_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'COMPOSER_AUDIT_ATTEMPTS harus bilangan bulat positif.\n' >&2
     exit 2
 fi
 
@@ -65,14 +71,27 @@ if [[ "$RUNTIME" = 'host' ]]; then
     set -e
 else
     printf 'Menjalankan Composer audit pada container sementara %s...\n' "$COMPOSER_AUDIT_IMAGE"
-    set +e
-    docker run --rm \
-        --mount "type=bind,src=$PROJECT_ROOT,dst=/app,readonly" \
-        --workdir /app \
-        --entrypoint sh \
-        "$COMPOSER_AUDIT_IMAGE" -c 'git config --global --add safe.directory /app && composer audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts' > "$composer_report"
-    composer_exit=$?
-    set -e
+    composer_exit=100
+    for attempt in $(seq 1 "$COMPOSER_AUDIT_ATTEMPTS"); do
+        set +e
+        docker run --rm \
+            --env COMPOSER_IPRESOLVE=4 \
+            --mount "type=bind,src=$PROJECT_ROOT,dst=/app,readonly" \
+            --workdir /app \
+            --entrypoint sh \
+            "$COMPOSER_AUDIT_IMAGE" -c 'git config --global --add safe.directory /app && composer audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts' > "$composer_report"
+        composer_exit=$?
+        set -e
+
+        if [[ -s "$composer_report" && "$(head -c 1 "$composer_report")" = '{' ]]; then
+            break
+        fi
+
+        if (( attempt < COMPOSER_AUDIT_ATTEMPTS )); then
+            printf 'Composer audit belum memperoleh laporan; ulangi (%d/%d)...\n' "$attempt" "$COMPOSER_AUDIT_ATTEMPTS" >&2
+            sleep "$attempt"
+        fi
+    done
 
     printf 'Menjalankan npm audit pada container sementara %s...\n' "$NPM_AUDIT_IMAGE"
     set +e

@@ -41,6 +41,8 @@ Security Gate dikembangkan menjadi dua tahap. Tahap sebelum deployment menjalank
 
 aaPanel menjalankan audit dengan runtime host karena PHP, Composer, dan npm tersedia pada server panel. Host Docker laboratorium tidak membawa tool tersebut; mode `DEPENDENCY_AUDIT_RUNTIME=docker` menjalankan Composer dan npm dalam container sementara, dengan source project dipasang hanya-baca serta direktori laporan saja yang dapat ditulis. Perbedaan ini adalah bagian dari evaluasi portabilitas mekanisme, bukan alasan untuk melewati audit pada Docker.
 
+Kegagalan memperoleh laporan advisory tidak diperlakukan sebagai hasil aman. Pada Docker, Composer dipaksa memakai IPv4 dan mencoba ulang secara terbatas (`COMPOSER_AUDIT_ATTEMPTS`, default tiga kali). Bila laporan JSON tetap tidak tersedia, audit gagal agar deployment tidak dinyatakan lolos tanpa bukti.
+
 Mode `report` menyimpan ringkasan JSON dan tidak menghentikan deployment. Mode `enforce` menghentikan deployment bila ditemukan advisory pada atau di atas ambang yang ditentukan. Pemisahan ini penting: temuan harus ditriase dan pembaruan versi harus diuji kompatibilitasnya sebelum dijadikan syarat blokir. Jalankan dengan:
 
 ```bash
