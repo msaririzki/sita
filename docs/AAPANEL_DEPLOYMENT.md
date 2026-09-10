@@ -244,6 +244,8 @@ location ^~ /livewire {
 }
 ```
 
+Simpan aturan eksplisit `/storage/` pada template. Laravel menerbitkan unggahan publik pada jalur ini; aturan penolakan direktori internal tidak boleh ikut memblokirnya.
+
 Untuk Reverb realtime, proxy websocket ke proses lokal Reverb:
 
 ```nginx
