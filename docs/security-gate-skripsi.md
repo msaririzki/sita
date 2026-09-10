@@ -56,6 +56,8 @@ Gunakan eksperimen before-after yang sama pada Docker dan aaPanel.
 
 Setiap gangguan dibuat hanya di VM laboratorium, gate dijalankan, hasil dan waktu dicatat, lalu konfigurasi dipulihkan dan diverifikasi ulang. Metrik utama: jumlah konfigurasi berisiko yang terdeteksi, false negative, false positive, waktu deteksi, dan intervensi manual. Fungsi aplikasi tetap diverifikasi dengan integration gate dan uji real-time dua pengguna agar pengamanan tidak merusak chat Reverb.
 
+Empat skenario yang tidak membutuhkan reload layanan dijalankan ulang melalui `scripts/run-security-gate-experiment.sh`. Runner membutuhkan konfirmasi eksplisit bahwa target adalah lab, menyimpan CSV dan log, lalu memulihkan `.env` dengan `trap`. Skenario header memakai salinan konfigurasi Nginx, sehingga tidak mengubah vhost aktif. Eksperimen endpoint publik dilakukan terpisah setelah tersedia vhost lab cadangan, karena memerlukan reload Nginx.
+
 ## Bukti awal laboratorium
 
 Pada 10 September 2026, konfigurasi aman lulus dengan nol kegagalan pada kedua VM. Keduanya menghasilkan satu peringatan HSTS karena URL laboratorium masih memakai HTTP. Sesudah itu, eksperimen `REVERB_ALLOWED_ORIGINS=*` dijalankan dengan mengubah `.env` sementara tanpa reload layanan, menjalankan gate, lalu memulihkan berkas secara otomatis. Gate menolak konfigurasi tersebut dalam 38 ms pada Docker dan 42 ms pada aaPanel. Setelah pemulihan, origin eksplisit, permission `.env`, endpoint `/up`, serta seluruh service yang relevan kembali tervalidasi.

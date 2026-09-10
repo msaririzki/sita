@@ -137,6 +137,9 @@ check_nginx_configuration() {
     grep -Eq 'root[[:space:]]+[^;]*/public;' "$config" && pass "Nginx document root mengarah ke public." || fail "Nginx document root harus mengarah ke public/."
     grep -Fq 'location ~ /\.(?!well-known).* {' "$config" && pass "Nginx memiliki aturan deny dot-file." || fail "Nginx belum memiliki aturan deny dot-file."
     grep -Eq 'add_header[[:space:]]+X-Content-Type-Options[[:space:]]+"?nosniff"?' "$config" && pass "Template Nginx memiliki X-Content-Type-Options." || fail "Template Nginx belum memiliki X-Content-Type-Options."
+    grep -Eq 'add_header[[:space:]]+X-Frame-Options[[:space:]]+"?(SAMEORIGIN|DENY)"?' "$config" && pass "Template Nginx memiliki X-Frame-Options." || fail "Template Nginx belum memiliki X-Frame-Options."
+    grep -Eq 'add_header[[:space:]]+Referrer-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Referrer-Policy." || fail "Template Nginx belum memiliki Referrer-Policy."
+    grep -Eq 'add_header[[:space:]]+Permissions-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Permissions-Policy." || fail "Template Nginx belum memiliki Permissions-Policy."
     grep -Eq 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|reverb:)' "$config" && pass "Proxy Reverb menuju backend internal." || warn "Proxy Reverb tidak dapat dipastikan menuju backend internal."
 }
 
