@@ -104,7 +104,8 @@ fi
 
 restore
 
-if ! curl -ksSI --max-time 10 "${PUBLIC_BASE_URL%/}/up" | grep -qi '^X-Content-Type-Options: nosniff'; then
+restored_headers="$(curl -ksSI --max-time 10 "${PUBLIC_BASE_URL%/}/up")"
+if ! grep -qi '^X-Content-Type-Options: nosniff' <<< "$restored_headers"; then
     printf 'Pemulihan header Nginx tidak dapat diverifikasi.\n' >&2
     exit 1
 fi
