@@ -48,7 +48,7 @@ Catatan penting:
 - Konfigurasi container memakai `.env`.
 - File `.env.docker` tersedia sebagai referensi/contoh konfigurasi khusus Docker lokal. Salin ke `.env`, isi `APP_KEY`, lalu jalankan build.
 - Nilai `VITE_REVERB_*` di `.env` ikut dipakai saat image build, jadi frontend tidak kehilangan app key Pusher/Reverb.
-- Seeder bisa diaktifkan tanpa mengubah `APP_ENV`: set `RUN_DB_SEED=true` di `.env` (akan dijalankan saat service `init`).
+- Seeder default-nya nonaktif agar deployment Docker tidak membuat akun atau data contoh tanpa persetujuan. Untuk VM lab yang database-nya masih kosong, set `RUN_DB_SEED=true` di `.env` (akan dijalankan saat service `init`).
 - Default `SEED_IF_EMPTY_ONLY=true` agar `docker compose up --build -d` tidak gagal saat data sudah ada; set `false` kalau memang ingin memaksa re-seed.
 - Jika seeder memakai Faker/factory dev dependency, biarkan `INIT_INSTALL_DEV_DEPENDENCIES=true` agar hanya service `init` yang install dev dependency; service runtime tetap lean.
 - Untuk environment server/CI, override nilai sensitif (`APP_KEY`, password DB, dsb) lewat secret/variable pipeline.

@@ -172,6 +172,8 @@ Script akan:
 - restart/reload PHP-FPM aaPanel agar opcache/runtime setara dengan container homeserver yang diganti;
 - keluar dari maintenance mode.
 
+Script tidak menjalankan `migrate:fresh`, `db:seed`, `truncate`, atau penghapusan tabel. Namun `php artisan migrate --force` dapat mengubah struktur database dan dapat mengubah data bila migration yang akan diterapkan memang berisi migrasi data. Buat backup database sebelum menjalankan deployment pada server kampus.
+
 Deploy dengan healthcheck seperti CI/CD homeserver:
 
 ```bash
@@ -203,7 +205,30 @@ HEALTHCHECK_URL=https://sita.kampus.ac.id/up \
 bash deploy/aapanel-integration-gate.sh
 ```
 
-Untuk menjalankannya otomatis di akhir deploy, tambahkan `RUN_INTEGRATION_GATE=true`. Sertakan `INSTALL_SERVICES=true` bila layanan Reverb, queue, dan scheduler juga dikelola oleh script.
+Untuk menjalankannya otomatis di akhir deploy, tambahkan `RUN_INTEGRATION_GATE=true`. `CHECK_SERVICES` bernilai `true` secara default, sehingga status PHP-FPM, Reverb, queue, dan scheduler tetap diperiksa pada setiap update. `INSTALL_SERVICES=true` hanya dipakai ketika service Reverb, queue, dan scheduler pertama kali dibuat atau unit service diubah.
+
+## Security Gate Sebelum dan Sesudah Deploy
+
+Gunakan preflight untuk menghentikan rilis sebelum source, dependency, atau migration diubah bila konfigurasi production tidak aman. Security Gate pascadeploy kemudian memeriksa endpoint publik dan header dari aplikasi yang sudah aktif.
+
+```bash
+DOMAIN=sita.kampus.ac.id \
+PHP_BIN=/www/server/php/84/bin/php \
+PHP_FPM_SERVICE=php-fpm-84 \
+PHP_FPM_RUNTIME_USER=www \
+HEALTHCHECK_URL=https://sita.kampus.ac.id/up \
+PUBLIC_BASE_URL=https://sita.kampus.ac.id \
+NGINX_CONFIG=/path/ke/vhost-sita.conf \
+RUN_DEPENDENCY_AUDIT=true \
+DEPENDENCY_AUDIT_MODE=enforce \
+DEPENDENCY_AUDIT_THRESHOLD=high \
+RUN_SECURITY_PREFLIGHT=true \
+RUN_INTEGRATION_GATE=true \
+RUN_SECURITY_GATE=true \
+bash deploy/aapanel-deploy.sh
+```
+
+Preflight tidak mengubah vhost aaPanel. Ia membaca konfigurasi yang diberikan lewat `NGINX_CONFIG`; jalankan dengan akses yang dapat membaca vhost tersebut. Skrip eksperimen `scripts/run-*-experiment.sh` hanya untuk VM laboratorium dan tidak boleh dijalankan pada server kampus.
 
 Deploy lengkap sekaligus memasang service Reverb, queue worker, dan scheduler systemd:
 

@@ -18,7 +18,10 @@ PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 RUN_INTEGRATION_GATE="${RUN_INTEGRATION_GATE:-false}"
+CHECK_SERVICES="${CHECK_SERVICES:-true}"
+RUN_SECURITY_PREFLIGHT="${RUN_SECURITY_PREFLIGHT:-false}"
 RUN_SECURITY_GATE="${RUN_SECURITY_GATE:-false}"
+CHECK_DOCKER="${CHECK_DOCKER:-false}"
 AAPANEL_DEPLOY_REEXECUTED="${AAPANEL_DEPLOY_REEXECUTED:-false}"
 DEPLOY_TEMPORARY_DIRECTORY=""
 
@@ -275,6 +278,14 @@ else
     exit 1
 fi
 
+if [ "$RUN_SECURITY_PREFLIGHT" = "true" ]; then
+    step "Jalankan DevSecOps security preflight"
+    CHECK_HTTP=false \
+        CHECK_DOCKER="$CHECK_DOCKER" \
+        NGINX_CONFIG="${NGINX_CONFIG:-}" \
+        bash scripts/security-gate.sh
+fi
+
 if [ "$GIT_PULL" = "true" ] && [ -d .git ]; then
     step "Update source dari git"
     git pull --ff-only
@@ -371,7 +382,7 @@ if [ "$RUN_INTEGRATION_GATE" = "true" ]; then
         PHP_FPM_SERVICE="$(derive_php_fpm_service || true)" \
         PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-$PHP_FPM_RUNTIME_GROUP}" \
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
-        CHECK_SERVICES="$INSTALL_SERVICES" \
+        CHECK_SERVICES="$CHECK_SERVICES" \
         bash deploy/aapanel-integration-gate.sh
 fi
 
@@ -379,6 +390,7 @@ if [ "$RUN_SECURITY_GATE" = "true" ]; then
     step "Jalankan DevSecOps security gate"
     PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}" \
         NGINX_CONFIG="${NGINX_CONFIG:-}" \
+        CHECK_DOCKER="$CHECK_DOCKER" \
         bash scripts/security-gate.sh
 fi
 

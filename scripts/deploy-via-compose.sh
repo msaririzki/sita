@@ -10,6 +10,14 @@ if [[ "${RUN_DEPENDENCY_AUDIT:-false}" = "true" ]]; then
         bash scripts/dependency-security-audit.sh
 fi
 
+if [[ "${RUN_SECURITY_PREFLIGHT:-false}" = "true" ]]; then
+    echo "Running DevSecOps security preflight..."
+    CHECK_HTTP=false \
+        CHECK_DOCKER=true \
+        NGINX_CONFIG="${NGINX_CONFIG:-}" \
+        bash scripts/security-gate.sh
+fi
+
 echo "Building images locally..."
 docker compose "${compose_files[@]}" build app web init
 
