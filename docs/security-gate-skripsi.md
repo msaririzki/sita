@@ -55,3 +55,7 @@ Gunakan eksperimen before-after yang sama pada Docker dan aaPanel.
 | Konfigurasi aman | semua perbaikan diterapkan | lulus, HSTS hanya peringatan pada HTTP |
 
 Setiap gangguan dibuat hanya di VM laboratorium, gate dijalankan, hasil dan waktu dicatat, lalu konfigurasi dipulihkan dan diverifikasi ulang. Metrik utama: jumlah konfigurasi berisiko yang terdeteksi, false negative, false positive, waktu deteksi, dan intervensi manual. Fungsi aplikasi tetap diverifikasi dengan integration gate dan uji real-time dua pengguna agar pengamanan tidak merusak chat Reverb.
+
+## Bukti awal laboratorium
+
+Pada 10 September 2026, konfigurasi aman lulus dengan nol kegagalan pada kedua VM. Keduanya menghasilkan satu peringatan HSTS karena URL laboratorium masih memakai HTTP. Sesudah itu, eksperimen `REVERB_ALLOWED_ORIGINS=*` dijalankan dengan mengubah `.env` sementara tanpa reload layanan, menjalankan gate, lalu memulihkan berkas secara otomatis. Gate menolak konfigurasi tersebut dalam 38 ms pada Docker dan 42 ms pada aaPanel. Setelah pemulihan, origin eksplisit, permission `.env`, endpoint `/up`, serta seluruh service yang relevan kembali tervalidasi.
