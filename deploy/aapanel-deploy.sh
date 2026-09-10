@@ -100,6 +100,12 @@ prepare_composer_runtime() {
     fi
 }
 
+normalize_generated_filament_assets() {
+    if [ -d public/js/filament ]; then
+        find public/js/filament -type f -name '*.js' -exec sed -i 's/[[:space:]]\+$//' {} +
+    fi
+}
+
 env_value() {
     key="$1"
     grep -E "^${key}=" .env | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
@@ -300,6 +306,7 @@ fi
 
 step "Install dependency PHP production"
 "$COMPOSER_BIN" install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+normalize_generated_filament_assets
 "$COMPOSER_BIN" check-platform-reqs --no-dev
 
 step "Install dependency frontend"
