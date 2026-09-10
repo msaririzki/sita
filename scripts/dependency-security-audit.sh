@@ -57,10 +57,38 @@ trap 'rm -rf "$temporary_directory"' EXIT
 composer_report="$temporary_directory/composer-audit.json"
 npm_report="$temporary_directory/npm-audit.json"
 
+prepare_host_composer_audit() {
+    if "$COMPOSER_BIN" audit --help >/dev/null 2>&1; then
+        composer_audit_command=("$COMPOSER_BIN")
+        return
+    fi
+
+    command -v curl >/dev/null 2>&1 || { printf 'curl wajib tersedia untuk Composer audit sementara.\n' >&2; exit 2; }
+    command -v sha256sum >/dev/null 2>&1 || { printf 'sha256sum wajib tersedia untuk memverifikasi Composer sementara.\n' >&2; exit 2; }
+
+    local composer_phar="$temporary_directory/composer.phar"
+    local checksum_file="$temporary_directory/composer.phar.sha256sum"
+    local expected_checksum actual_checksum
+
+    printf 'Composer host belum mendukung audit; menggunakan Composer 2 sementara yang terverifikasi.\n' >&2
+    curl -fsSL --retry 3 --connect-timeout 10 https://getcomposer.org/download/latest-stable/composer.phar -o "$composer_phar"
+    curl -fsSL --retry 3 --connect-timeout 10 https://getcomposer.org/download/latest-stable/composer.phar.sha256sum -o "$checksum_file"
+    expected_checksum="$(awk '{print $1}' "$checksum_file")"
+    actual_checksum="$(sha256sum "$composer_phar" | awk '{print $1}')"
+
+    if [[ -z "$expected_checksum" || "$expected_checksum" != "$actual_checksum" ]]; then
+        printf 'FAIL  Checksum Composer sementara tidak sesuai; audit dihentikan.\n' >&2
+        exit 2
+    fi
+
+    composer_audit_command=("$PHP_BIN" "$composer_phar")
+}
+
 if [[ "$RUNTIME" = 'host' ]]; then
+    prepare_host_composer_audit
     printf 'Menjalankan Composer audit untuk dependency production pada host...\n'
     set +e
-    "$COMPOSER_BIN" audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts > "$composer_report"
+    "${composer_audit_command[@]}" audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts > "$composer_report"
     composer_exit=$?
     set -e
 

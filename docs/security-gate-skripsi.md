@@ -43,6 +43,8 @@ aaPanel menjalankan audit dengan runtime host karena PHP, Composer, dan npm ters
 
 Kegagalan memperoleh laporan advisory tidak diperlakukan sebagai hasil aman. Pada Docker, Composer dipaksa memakai IPv4 dan mencoba ulang secara terbatas (`COMPOSER_AUDIT_ATTEMPTS`, default tiga kali). Bila laporan JSON tetap tidak tersedia, audit gagal agar deployment tidak dinyatakan lolos tanpa bukti.
 
+Pengujian aaPanel memperlihatkan Composer bawaan belum menyediakan subperintah `audit` dan menghasilkan deprecation warning pada PHP 8.4. Gate tidak memperbarui Composer global panel. Sebagai gantinya, mode host memeriksa kemampuan Composer lebih dahulu; bila tidak tersedia, ia mengambil Composer 2 sementara dari sumber resmi, memverifikasi SHA-256, menggunakan berkas itu untuk audit, lalu menghapusnya melalui cleanup. Dengan demikian, kontrol tetap portabel tanpa memodifikasi toolchain aaPanel yang dipakai aplikasi lain.
+
 Mode `report` menyimpan ringkasan JSON dan tidak menghentikan deployment. Mode `enforce` menghentikan deployment bila ditemukan advisory pada atau di atas ambang yang ditentukan. Pemisahan ini penting: temuan harus ditriase dan pembaruan versi harus diuji kompatibilitasnya sebelum dijadikan syarat blokir. Jalankan dengan:
 
 ```bash
