@@ -83,3 +83,7 @@ Angka tersebut adalah waktu eksekusi gate, bukan waktu respons aplikasi. Docker 
 ### Verifikasi header pada konfigurasi Nginx aktif
 
 Eksperimen live menghapus `X-Content-Type-Options` dari Nginx aktif secara sementara pada VM lab, menjalankan `nginx -t` dan reload, lalu menjalankan Security Gate. Gate menolak kondisi tersebut dengan alasan header hilang dalam 235 ms pada Docker dan 490 ms pada aaPanel. Konfigurasi asli kemudian dipulihkan, Nginx direload kembali, dan `/up` kembali menghasilkan HTTP 200 dengan header `X-Content-Type-Options: nosniff` pada kedua lingkungan.
+
+### Penyempurnaan kontrol origin Reverb
+
+Uji dua pengguna menemukan regresi pada aaPanel saat daftar `REVERB_ALLOWED_ORIGINS` memakai URL lengkap. Dokumentasi dan kode Reverb menunjukkan bahwa server membandingkan hostname dari header `Origin`, sehingga nilai URL lengkap tidak cocok walaupun terlihat eksplisit. Security Gate kemudian diperbaiki untuk menolak wildcard dan nilai yang memuat `://`. Setelah nilai lab diubah menjadi hostname saja dan proses Reverb dimuat ulang, integration gate serta uji chat dua pengguna kembali lulus pada Docker dan aaPanel.

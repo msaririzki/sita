@@ -104,6 +104,12 @@ for run_index in $(seq 1 "$EXPERIMENT_RUNS"); do
     restore_env
     cp -p .env "$env_backup"
 
+    set_env_value REVERB_ALLOWED_ORIGINS 'http://invalid.example.test'
+    run_case reverb_origin_url_format fail 'REVERB_ALLOWED_ORIGINS harus berisi hostname eksplisit' \
+        SECURITY_GATE_PROFILE=production CHECK_HTTP=false CHECK_DOCKER="$CHECK_DOCKER" NGINX_CONFIG="$NGINX_CONFIG"
+    restore_env
+    cp -p .env "$env_backup"
+
     set_env_value APP_DEBUG true
     run_case app_debug_enabled fail 'APP_DEBUG harus false pada profile production.' \
         SECURITY_GATE_PROFILE=production CHECK_HTTP=false CHECK_DOCKER="$CHECK_DOCKER" NGINX_CONFIG="$NGINX_CONFIG"
