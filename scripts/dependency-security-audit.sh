@@ -69,7 +69,8 @@ else
     docker run --rm \
         --mount "type=bind,src=$PROJECT_ROOT,dst=/app,readonly" \
         --workdir /app \
-        "$COMPOSER_AUDIT_IMAGE" audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts > "$composer_report"
+        --entrypoint sh \
+        "$COMPOSER_AUDIT_IMAGE" -c 'git config --global --add safe.directory /app && composer audit --locked --no-dev --format=json --no-interaction --no-plugins --no-scripts' > "$composer_report"
     composer_exit=$?
     set -e
 
