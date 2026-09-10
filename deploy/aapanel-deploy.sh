@@ -20,6 +20,7 @@ HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 RUN_INTEGRATION_GATE="${RUN_INTEGRATION_GATE:-false}"
 RUN_SECURITY_GATE="${RUN_SECURITY_GATE:-false}"
 AAPANEL_DEPLOY_REEXECUTED="${AAPANEL_DEPLOY_REEXECUTED:-false}"
+DEPLOY_TEMPORARY_DIRECTORY=""
 
 export PATH="$(dirname "$PHP_BIN"):$PATH"
 
@@ -28,6 +29,10 @@ APP_WAS_DOWN=0
 finish() {
     if [ "$APP_WAS_DOWN" -eq 1 ]; then
         "$PHP_BIN" artisan up >/dev/null 2>&1 || true
+    fi
+
+    if [ -n "$DEPLOY_TEMPORARY_DIRECTORY" ]; then
+        rm -rf "$DEPLOY_TEMPORARY_DIRECTORY"
     fi
 }
 trap finish EXIT
@@ -46,6 +51,51 @@ require_file() {
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
         printf 'Command wajib tidak tersedia: %s\n' "$1" >&2
+        exit 1
+    fi
+}
+
+composer_supports_runtime_api() {
+    "$COMPOSER_BIN" --version --no-ansi 2>/dev/null | "$PHP_BIN" -r '
+        $output = trim(stream_get_contents(STDIN));
+        preg_match("/Composer version ([0-9]+(?:\\.[0-9]+){1,2})/", $output, $matches);
+        exit(isset($matches[1]) && version_compare($matches[1], "2.2.0", ">=") ? 0 : 1);
+    '
+}
+
+prepare_composer_runtime() {
+    if composer_supports_runtime_api; then
+        return
+    fi
+
+    require_command curl
+    require_command sha256sum
+
+    step "Siapkan Composer 2 sementara"
+    printf 'Composer global belum memenuhi Runtime API 2.2; menggunakan Composer sementara yang terverifikasi.\n'
+
+    DEPLOY_TEMPORARY_DIRECTORY="$(mktemp -d)"
+    local composer_phar="$DEPLOY_TEMPORARY_DIRECTORY/composer.phar"
+    local checksum_file="$DEPLOY_TEMPORARY_DIRECTORY/composer.phar.sha256sum"
+    local composer_wrapper="$DEPLOY_TEMPORARY_DIRECTORY/composer"
+    local expected_checksum actual_checksum
+
+    curl -fsSL --retry 3 --connect-timeout 10 https://getcomposer.org/download/latest-stable/composer.phar -o "$composer_phar"
+    curl -fsSL --retry 3 --connect-timeout 10 https://getcomposer.org/download/latest-stable/composer.phar.sha256sum -o "$checksum_file"
+    expected_checksum="$(awk '{print $1}' "$checksum_file")"
+    actual_checksum="$(sha256sum "$composer_phar" | awk '{print $1}')"
+
+    if [ -z "$expected_checksum" ] || [ "$expected_checksum" != "$actual_checksum" ]; then
+        printf 'Checksum Composer sementara tidak sesuai; deployment dihentikan.\n' >&2
+        exit 1
+    fi
+
+    printf '#!/usr/bin/env bash\nexec %q %q "$@"\n' "$PHP_BIN" "$composer_phar" > "$composer_wrapper"
+    chmod 700 "$composer_wrapper"
+    COMPOSER_BIN="$composer_wrapper"
+
+    if ! composer_supports_runtime_api; then
+        printf 'Composer sementara belum memenuhi Runtime API 2.2; deployment dihentikan.\n' >&2
         exit 1
     fi
 }
@@ -208,6 +258,7 @@ require_command "$PHP_BIN"
 require_command "$COMPOSER_BIN"
 require_command "$NODE_BIN"
 require_command "$NPM_BIN"
+prepare_composer_runtime
 
 if grep -q '^APP_ENV=production' .env && grep -q '^APP_DEBUG=false' .env; then
     printf 'Environment production terdeteksi.\n'
