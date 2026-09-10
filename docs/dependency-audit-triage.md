@@ -98,3 +98,5 @@ Tool build dan kualitas yang sebelumnya salah dicatat sebagai `dependencies` dip
 | Setelah pembaruan runtime | 0 | 0 |
 
 Lockfile mengunci perbaikan runtime untuk `axios` 1.20.0, `form-data` 4.0.6, `qs` 6.16.0, `engine.io-client` 6.6.6, `socket.io-parser` 4.2.7, dan `ws` 8.21.3 melalui `overrides`. Vite diperbarui ke 7.3.6 dan `concurrently` ke 9.2.4 dalam major yang sama. `npm ci`, `npm run types`, dan `npm run build` lulus setelah pembaruan. Audit seluruh dependency masih mencatat 8 advisory transitive pada tool pengembangan; temuan tersebut tidak mengubah hasil audit production dan tetap menjadi backlog maintenance, bukan alasan untuk mengaktifkan pengecualian pada gate produksi.
+
+Uji akhir pada Docker dan aaPanel menggunakan `DEPENDENCY_AUDIT_MODE=enforce` serta ambang `high` lulus dengan Composer 0 dan npm 0 advisory. Setelah deployment, kedua Integration Gate memverifikasi healthcheck, akses storage, bundle Reverb, dan WebSocket upgrade; Security Gate berakhir dengan 0 kegagalan. Peringatan HSTS hanya muncul karena endpoint laboratorium memakai HTTP internal, sehingga pengujian HSTS HTTPS memang tidak dijalankan.
