@@ -68,15 +68,16 @@ Pada 10 September 2026, konfigurasi aman lulus dengan nol kegagalan pada kedua V
 
 ### Replikasi awal lima kali
 
-Pada hari yang sama, runner dijalankan lima kali pada setiap lingkungan. Semua keputusan yang diharapkan tercapai (5/5 per skenario). Median durasi gate adalah sebagai berikut.
+Setelah validasi format hostname Reverb ditambahkan, runner dijalankan lima kali pada setiap lingkungan. Semua keputusan yang diharapkan tercapai (5/5 per skenario). Median durasi gate adalah sebagai berikut.
 
 | Skenario | Docker | aaPanel |
 | --- | ---: | ---: |
-| Baseline aman | 618 ms | 614 ms |
-| Origin Reverb wildcard | 499 ms | 55 ms |
-| `APP_DEBUG=true` | 468 ms | 55 ms |
-| Permission `.env` longgar | 492 ms | 58 ms |
-| `Permissions-Policy` hilang pada konfigurasi salinan | 487 ms | 56 ms |
+| Baseline aman | 676 ms | 590 ms |
+| Origin Reverb wildcard | 465 ms | 53 ms |
+| URL lengkap pada origin Reverb | 479 ms | 55 ms |
+| `APP_DEBUG=true` | 449 ms | 59 ms |
+| Permission `.env` longgar | 495 ms | 56 ms |
+| `Permissions-Policy` hilang pada konfigurasi salinan | 448 ms | 57 ms |
 
 Angka tersebut adalah waktu eksekusi gate, bukan waktu respons aplikasi. Docker memeriksa artefak frontend di dalam container sehingga jalur pemeriksaannya lebih berat daripada aaPanel. Karena itu, hasil awal dipakai untuk menunjukkan konsistensi deteksi dalam tiap lingkungan, bukan untuk menyimpulkan aaPanel lebih cepat daripada Docker.
 
