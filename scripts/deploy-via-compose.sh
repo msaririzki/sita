@@ -21,7 +21,7 @@ if [[ -n "${HEALTHCHECK_URL:-}" ]]; then
     for attempt in {1..20}; do
         if curl -fsS "${HEALTHCHECK_URL}" >/dev/null; then
             echo "Healthcheck passed"
-            exit 0
+            break
         fi
 
         sleep 3
