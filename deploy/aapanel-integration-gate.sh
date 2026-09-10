@@ -33,6 +33,20 @@ env_value() {
     grep -E "^${key}=" .env | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
 }
 
+resolved_env_value() {
+    local value reference
+
+    value="$(env_value "$1")"
+    case "$value" in
+        '\${'*'}')
+            reference="${value#\$\{}"
+            reference="${reference%\}}"
+            env_value "$reference"
+            ;;
+        *) printf '%s' "$value" ;;
+    esac
+}
+
 service_slug() {
     printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-'
 }
@@ -82,7 +96,7 @@ check_health() {
 check_frontend_reverb_bundle() {
     local host
 
-    host="$(env_value VITE_REVERB_HOST)"
+    host="$(resolved_env_value VITE_REVERB_HOST)"
     if [ -z "$host" ]; then
         fail "VITE_REVERB_HOST kosong"
         return
