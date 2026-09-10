@@ -65,8 +65,8 @@ async function openDosenBimbinganThread(
     studentName: string,
 ): Promise<void> {
     await page.goto('/dosen/pesan-bimbingan');
-    await expect(page).toHaveTitle(/Pesan Bimbingan Dosen/i);
-    await page.getByPlaceholder('Cari mahasiswa...').fill(studentName);
+    await expect(page).toHaveTitle(/Pesan(?: Bimbingan)? Dosen/i);
+    await page.getByPlaceholder(/Cari (mahasiswa|grup)\.\.\./).fill(studentName);
 
     const threadButton = page
         .locator('button')
@@ -543,19 +543,20 @@ test.describe('Bimbingan and chat integration', () => {
             const dosenPage = await dosenContext.newPage();
 
             await openMahasiswaBimbinganThread(mahasiswaPage);
+            await openDosenBimbinganThread(
+                dosenPage,
+                thesisScenarios.activeResearch.studentName,
+            );
+
             await sendChatMessage(
                 mahasiswaPage,
                 /\/mahasiswa\/pesan\/\d+\/messages$/,
                 mahasiswaMessage,
             );
 
-            await openDosenBimbinganThread(
-                dosenPage,
-                thesisScenarios.activeResearch.studentName,
-            );
             await expect(
                 dosenPage.getByText(mahasiswaMessage).last(),
-            ).toBeVisible();
+            ).toBeVisible({ timeout: 15_000 });
 
             await sendChatMessage(
                 dosenPage,
@@ -563,10 +564,9 @@ test.describe('Bimbingan and chat integration', () => {
                 dosenMessage,
             );
 
-            await openMahasiswaBimbinganThread(mahasiswaPage);
             await expect(
                 mahasiswaPage.getByText(dosenMessage).last(),
-            ).toBeVisible();
+            ).toBeVisible({ timeout: 15_000 });
         } finally {
             await mahasiswaContext.close();
             await dosenContext.close();

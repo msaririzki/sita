@@ -41,6 +41,9 @@ export default defineConfig({
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
+        launchOptions: process.env.PLAYWRIGHT_EXECUTABLE_PATH
+            ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+            : undefined,
     },
     projects: [
         {
