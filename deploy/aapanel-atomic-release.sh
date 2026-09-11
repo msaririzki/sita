@@ -340,6 +340,14 @@ verify_candidate() {
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         bash "$SCRIPT_ROOT/deploy/aapanel-integration-gate.sh"
     run_privileged env \
+        DOMAIN="$DOMAIN" \
+        APP_DIR="$CURRENT_LINK" \
+        PHP_BIN="$PHP_BIN" \
+        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        NGINX_CONFIG="$NGINX_CONFIG" \
+        CHECK_SERVICES=true \
+        bash "$SCRIPT_ROOT/deploy/aapanel-sync.sh"
+    run_privileged env \
         APP_DIR="$CURRENT_LINK" \
         PUBLIC_BASE_URL="${HEALTHCHECK_URL%/up}" \
         NGINX_CONFIG="$NGINX_CONFIG" \

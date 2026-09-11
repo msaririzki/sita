@@ -196,13 +196,20 @@ security_gate() {
 }
 
 banner
+if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
+    phase '1/3' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+    phase '2/3' 'Precheck runtime dan aplikasi' doctor_environment
+    phase '3/3' 'Atomic release, gate, dan rollback otomatis' deploy_application
+    printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
+    printf 'Log tersimpan di: %s\n' "$LOG_FILE"
+    exit 0
+fi
+
 if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     phase '1/5' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
     phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
     if [ "$ACTION" = 'bootstrap' ]; then
         phase '3/5' 'Deployment awal dan pemasangan service runtime' deploy_application
-    elif [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
-        phase '3/5' 'Atomic release aplikasi' deploy_application
     else
         phase '3/5' 'Deployment aplikasi' deploy_application
     fi
