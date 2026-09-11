@@ -33,6 +33,21 @@ fail() {
     FAILED=1
 }
 
+PHP_EXTENSIONS=''
+
+read_php_extensions() {
+    PHP_EXTENSIONS="$("$PHP_BIN" -m 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+}
+
+php_extension_active() {
+    local extension="$1"
+
+    case $'\n'"$PHP_EXTENSIONS"$'\n' in
+        *$'\n'"$extension"$'\n'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 run_privileged() {
     if [ "$EUID" -eq 0 ]; then
         "$@"
@@ -188,13 +203,17 @@ if [ -x "$PHP_BIN" ]; then
         fail "PHP CLI belum memenuhi minimal 8.4"
     fi
 
-    for extension in bcmath ctype dom fileinfo filter intl json mbstring openssl pcntl pcre pdo pdo_mysql session tokenizer xml zip; do
-        if "$PHP_BIN" -m | grep -qi "^${extension}$"; then
-            ok "PHP extension aktif: ${extension}"
-        else
-            fail "PHP extension belum aktif: ${extension}. Aktifkan melalui aaPanel > App Store > PHP 8.4 > Install extensions."
-        fi
-    done
+    if read_php_extensions; then
+        for extension in bcmath ctype dom fileinfo filter intl json mbstring openssl pcntl pcre pdo pdo_mysql session tokenizer xml zip; do
+            if php_extension_active "$extension"; then
+                ok "PHP extension aktif: ${extension}"
+            else
+                fail "PHP extension belum aktif: ${extension}. Aktifkan melalui aaPanel > App Store > PHP 8.4 > Install extensions."
+            fi
+        done
+    else
+        fail "Daftar PHP extension tidak dapat dibaca dari ${PHP_BIN}"
+    fi
 else
     fail "PHP CLI aaPanel tidak ditemukan: ${PHP_BIN}"
 fi

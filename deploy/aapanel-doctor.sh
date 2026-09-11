@@ -28,6 +28,21 @@ fail() {
     FAILED=1
 }
 
+PHP_EXTENSIONS=''
+
+read_php_extensions() {
+    PHP_EXTENSIONS="$("$PHP_BIN" -m 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+}
+
+php_extension_active() {
+    local extension="$1"
+
+    case $'\n'"$PHP_EXTENSIONS"$'\n' in
+        *$'\n'"$extension"$'\n'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 need_cmd() {
     if command -v "$1" >/dev/null 2>&1; then
         ok "Command tersedia: $1"
@@ -63,13 +78,17 @@ if command -v "$PHP_BIN" >/dev/null 2>&1; then
         fail "PHP CLI ${PHP_VERSION_STR:-unknown} belum memenuhi minimal 8.4"
     fi
 
-    for extension in bcmath ctype dom fileinfo filter intl json mbstring openssl pcntl pcre pdo session tokenizer xml zip; do
-        if "$PHP_BIN" -m | grep -qi "^${extension}$"; then
-            ok "PHP extension aktif: ${extension}"
-        else
-            fail "PHP extension belum aktif: ${extension}"
-        fi
-    done
+    if read_php_extensions; then
+        for extension in bcmath ctype dom fileinfo filter intl json mbstring openssl pcntl pcre pdo session tokenizer xml zip; do
+            if php_extension_active "$extension"; then
+                ok "PHP extension aktif: ${extension}"
+            else
+                fail "PHP extension belum aktif: ${extension}"
+            fi
+        done
+    else
+        fail "Daftar PHP extension tidak dapat dibaca dari ${PHP_BIN}"
+    fi
 fi
 
 if command -v "$COMPOSER_BIN" >/dev/null 2>&1 && command -v "$PHP_BIN" >/dev/null 2>&1; then
@@ -159,7 +178,7 @@ if [ -f .env ]; then
     fi
 
     if [ "$DB_CONNECTION_VALUE" = "mysql" ] || [ "$DB_CONNECTION_VALUE" = "mariadb" ]; then
-        if "$PHP_BIN" -m | grep -qi '^pdo_mysql$'; then
+        if php_extension_active pdo_mysql; then
             ok "pdo_mysql aktif untuk ${DB_CONNECTION_VALUE}"
         else
             fail "pdo_mysql belum aktif, wajib untuk ${DB_CONNECTION_VALUE}"

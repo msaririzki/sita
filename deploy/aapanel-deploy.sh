@@ -116,15 +116,35 @@ env_value() {
     grep -E "^${key}=" .env | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
 }
 
+PHP_EXTENSIONS=''
+
+read_php_extensions() {
+    PHP_EXTENSIONS="$("$PHP_BIN" -m 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+}
+
+php_extension_active() {
+    local extension="$1"
+
+    case $'\n'"$PHP_EXTENSIONS"$'\n' in
+        *$'\n'"$extension"$'\n'*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 validate_php_runtime() {
     if ! "$PHP_BIN" -r 'exit(version_compare(PHP_VERSION, "8.4.0", ">=") ? 0 : 1);' >/dev/null 2>&1; then
         printf 'PHP CLI harus 8.4 atau lebih baru. Versi sekarang: %s\n' "$("$PHP_BIN" -r 'echo PHP_VERSION;' 2>/dev/null || printf 'unknown')" >&2
         exit 1
     fi
 
+    if ! read_php_extensions; then
+        printf 'Daftar PHP extension tidak dapat dibaca dari %s\n' "$PHP_BIN" >&2
+        exit 1
+    fi
+
     missing_extensions=0
     for extension in bcmath ctype dom fileinfo filter intl json mbstring openssl pcntl pcre pdo session tokenizer xml zip; do
-        if ! "$PHP_BIN" -m | grep -qi "^${extension}$"; then
+        if ! php_extension_active "$extension"; then
             printf 'PHP extension wajib belum aktif: %s\n' "$extension" >&2
             missing_extensions=1
         fi
@@ -133,13 +153,13 @@ validate_php_runtime() {
     db_connection="$(env_value DB_CONNECTION)"
     case "$db_connection" in
         mysql|mariadb)
-            if ! "$PHP_BIN" -m | grep -qi '^pdo_mysql$'; then
+            if ! php_extension_active pdo_mysql; then
                 printf 'PHP extension wajib belum aktif untuk %s: pdo_mysql\n' "$db_connection" >&2
                 missing_extensions=1
             fi
             ;;
         pgsql)
-            if ! "$PHP_BIN" -m | grep -qi '^pdo_pgsql$'; then
+            if ! php_extension_active pdo_pgsql; then
                 printf 'PHP extension wajib belum aktif untuk pgsql: pdo_pgsql\n' >&2
                 missing_extensions=1
             fi
