@@ -55,4 +55,4 @@ bash deploy/sita.sh release
 
 ## Log dan keputusan
 
-Backup migration aaPanel disimpan default pada `/www/backup/database/sita` dengan mode file `600` dan checksum `.sha256`. Lokasi dapat diatur melalui `DB_BACKUP_DIR` pada profile lokal. Setiap aksi runner menyimpan transcript bertimestamp pada `storage/logs/deployment/`. Status `siap` berarti seluruh pemeriksaan wajib pada aksi tersebut lulus. Peringatan tetap harus dibaca melalui menu log sebelum keputusan production dibuat.
+Backup migration aaPanel disimpan default pada `/var/backups/sita` dengan mode file `600` dan checksum `.sha256`. Lokasi dapat diatur melalui `DB_BACKUP_DIR` pada profile lokal. Setiap aksi runner menyimpan transcript bertimestamp pada `storage/logs/deployment/`. Status `siap` berarti seluruh pemeriksaan wajib pada aksi tersebut lulus. Peringatan tetap harus dibaca melalui menu log sebelum keputusan production dibuat.

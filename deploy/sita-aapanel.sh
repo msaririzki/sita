@@ -134,7 +134,7 @@ PUBLIC_BASE_URL=${public_url}
 # Jika migration ditemukan saat Release, konsol menampilkan daftar lalu meminta
 # Y untuk membuat backup otomatis dan menerapkan migration.
 MIGRATION_MODE=prompt
-DB_BACKUP_DIR=/www/backup/database/sita
+DB_BACKUP_DIR=/var/backups/sita
 
 # Kompatibilitas perintah lama. Tetap false; gunakan MIGRATION_MODE di atas.
 RUN_MIGRATIONS=false

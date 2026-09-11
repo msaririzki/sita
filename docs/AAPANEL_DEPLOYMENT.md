@@ -171,7 +171,7 @@ Untuk rilis aplikasi, gunakan:
 bash deploy/aapanel-release.sh release
 ```
 
-Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Saat `MIGRATION_MODE=prompt` yang menjadi default, migration tertunda ditampilkan sebelum maintenance mode dan operator cukup menjawab `Y`. Skrip lalu membuat dump MySQL/MariaDB terkompresi, menguji integritas gzip, menulis checksum, dan hanya setelah itu menjalankan `php artisan migrate --force`. Backup default tersimpan di `/www/backup/database/sita`; ubah `DB_BACKUP_DIR` pada profile bila server memakai lokasi backup lain.
+Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Saat `MIGRATION_MODE=prompt` yang menjadi default, migration tertunda ditampilkan sebelum maintenance mode dan operator cukup menjawab `Y`. Skrip lalu membuat dump MySQL/MariaDB terkompresi, menguji integritas gzip, menulis checksum, dan hanya setelah itu menjalankan `php artisan migrate --force`. Backup default tersimpan di `/var/backups/sita`; ubah `DB_BACKUP_DIR` pada profile bila server memakai lokasi backup lain.
 
 ### VM aaPanel baru dan path clone bebas
 

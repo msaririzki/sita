@@ -29,7 +29,7 @@ DB_BACKUP_DEFAULTS_FILE=""
 DB_BACKUP_TEMPORARY_FILE=""
 PENDING_MIGRATIONS=()
 RUN_PENDING_MIGRATIONS=false
-DB_BACKUP_DIR="${DB_BACKUP_DIR:-/www/backup/database/sita}"
+DB_BACKUP_DIR="${DB_BACKUP_DIR:-/var/backups/sita}"
 
 export PATH="$(dirname "$PHP_BIN"):$PATH"
 
