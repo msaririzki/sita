@@ -424,6 +424,12 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Hasil:** kedua Tunnel bernama `sita-lab-aapanel` dan `sita-lab-docker` berstatus `healthy`, masing-masing memiliki satu connector aktif serta hostname terpisah pada zona `ikydev.com`. DNS diarahkan ke target `cfargotunnel.com` dalam mode proxied.
 - **Temuan:** `https://sita-aapanel.ikydev.com/up` awalnya menghasilkan `502`, sementara status Tunnel tetap sehat. Inspeksi host menunjukkan Nginx aaPanel tidak aktif dan tidak ada listener pada port 80 setelah VM dikembalikan ke snapshot aaPanel pra-stack. Ini membuktikan bahwa status Tunnel hanya mengukur koneksi connector ke Cloudflare; readiness Nginx/PHP/Laravel harus tetap diuji oleh deployment gate.
 - **Keputusan:** Tunnel aaPanel dipertahankan dengan ingress `http://127.0.0.1:80`, tetapi pengujian aplikasi aaPanel ditandai tertunda hingga Nginx, PHP, database GUI aaPanel, dan deployment SITA selesai disiapkan pada VM bersih.
+
+### E-50 - Reset ulang baseline aaPanel untuk replikasi instalasi dari nol
+
+- **Tindakan:** VM `sita-aapanel` dikembalikan ke snapshot `aapanel-pre-stack-20260910`, kemudian checkout source lama `/www/wwwroot/sita` dihapus setelah path absolut dan direktori Git diverifikasi.
+- **Hasil verifikasi:** service `btpanel` aktif dan listener aaPanel pada port `12144` tetap tersedia. Nginx dan MySQL tidak aktif, `cloudflared` tidak terpasang, serta path source SITA sudah tidak ada.
+- **Makna eksperimen:** baseline ini mempertahankan aaPanel sambil menghapus komponen aplikasi dan runtime lab. Tahap berikutnya dapat mereplikasi pemasangan melalui GUI aaPanel dan console deployment secara terukur dari kondisi yang sama.
 - **Penguatan vhost:** template kini membatasi regex Reverb pada `/app` dan `/apps` secara tepat, memakai timeout WebSocket 3600 detik, dan mewajibkan HSTS `always` untuk vhost yang mendengar HTTPS. Konfigurasi production juga divalidasi agar `LOG_LEVEL` bukan `debug` dan origin Reverb eksplisit.
 - **Makna skripsi:** kontrol deployment perlu memahami perbedaan CDN edge dan origin. Pendekatan ini mempertahankan WAF sekaligus menghasilkan bukti objektif bahwa konfigurasi Nginx dan aplikasi di origin tetap aman dan berfungsi.
 
