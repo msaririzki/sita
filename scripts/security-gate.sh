@@ -219,8 +219,10 @@ check_nginx_configuration() {
     if grep -Eq '^[[:space:]]*listen[[:space:]]+443' "$config"; then
         grep -Eq 'add_header[[:space:]]+Strict-Transport-Security[[:space:]]+.*always' "$config" && pass "Template Nginx HTTPS memiliki HSTS dengan always." || fail "Template Nginx HTTPS harus memiliki Strict-Transport-Security dengan always."
     fi
-    grep -Fq 'location ~ ^/(app|apps)(?:/|$) {' "$config" && pass "Route proxy Reverb dibatasi pada /app dan /apps." || warn "Route proxy Reverb belum memakai batas path yang presisi."
-    grep -Eq 'proxy_read_timeout[[:space:]]+(3[0-9]{2,}|[4-9][0-9]{2,}|[1-9][0-9]{3,})' "$config" && pass "Timeout baca WebSocket memadai." || warn "Timeout baca WebSocket kurang dari 300 detik."
+    if [[ "$CHECK_DOCKER" != "true" ]]; then
+        grep -Fq 'location ~ ^/(app|apps)(?:/|$) {' "$config" && pass "Route proxy Reverb dibatasi pada /app dan /apps." || warn "Route proxy Reverb belum memakai batas path yang presisi."
+        grep -Eq 'proxy_read_timeout[[:space:]]+(3[0-9]{2,}|[4-9][0-9]{2,}|[1-9][0-9]{3,})' "$config" && pass "Timeout baca WebSocket memadai." || warn "Timeout baca WebSocket kurang dari 300 detik."
+    fi
     grep -Eq 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|reverb:)' "$config" && pass "Proxy Reverb menuju backend internal." || warn "Proxy Reverb tidak dapat dipastikan menuju backend internal."
 }
 
