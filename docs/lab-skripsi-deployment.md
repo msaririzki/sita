@@ -323,6 +323,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi lab pada commit `fea4443`:** endpoint `/up` menghasilkan HTTP `200`; PHP-FPM, Reverb, queue, dan scheduler aktif. Dua file lokal aaPanel terdeteksi dan ditampilkan sebagai `HANYA FILE PANEL LOKAL`, bukan perubahan kode. File tersebut tidak dihapus atau diubah.
 - **Makna skripsi:** observabilitas deployment tidak cukup dengan log panjang. Ringkasan status mempercepat keputusan operator, sementara klasifikasi perubahan lokal menghindari tindakan korektif yang salah terhadap konfigurasi panel.
 
+### E-35 - Status siap dibedakan dari status tanpa peringatan
+
+- **Masalah penggunaan:** hasil `PEMERIKSAAN DINYATAKAN SIAP` pada log dapat tetap memiliki peringatan nonblokir. Tanpa ringkasan peringatan, operator berisiko menganggap server tidak mempunyai catatan lanjutan.
+- **Perbaikan:** menu status menghitung baris peringatan pada log tindakan terbaru dan menampilkannya secara eksplisit dengan arahan ke menu log lengkap.
+- **Validasi lab pada commit `285b663`:** status VM menampilkan dua peringatan dari pemeriksaan terakhir: Composer global belum memenuhi runtime API sehingga runner memakai Composer sementara terverifikasi, dan port Reverb `80` sesuai lab HTTP tetapi perlu disesuaikan menjadi `443` saat reverse proxy HTTPS dipakai. Health endpoint dan seluruh service tetap aktif.
+- **Makna skripsi:** hasil evaluasi perlu mengklasifikasikan gagal, lulus, dan lulus dengan peringatan. Klasifikasi ini membantu pengukuran false positive serta keputusan perbaikan tanpa mengubah peringatan menjadi kegagalan semu.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
