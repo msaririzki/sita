@@ -182,7 +182,7 @@ cd /www/wwwroot/webkampus/sita
 bash deploy/sita.sh
 ```
 
-Menu menyediakan pembuatan profile lokal, bootstrap awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
+Pilih **aaPanel** pada konsol utama. Menu aaPanel menyediakan pembuatan profile lokal, deploy awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
 
 Sebelum memilih **Bootstrap server baru**, lakukan langkah GUI aaPanel yang memang bersifat infrastruktur: install Nginx dan PHP 8.4, aktifkan extension PHP yang tersedia, buat website dengan domain/path clone, buat database serta user, dan aktifkan SSL setelah DNS siap. Jika ada extension SITA yang tidak tersedia di GUI, gunakan prosedur CLI aaPanel yang spesifik untuk versi PHP tersebut pada maintenance window, lalu jalankan menu **Check**. Jangan gunakan paket PHP Ubuntu (`apt install php-*`) karena tidak mengubah build PHP aaPanel.
 
