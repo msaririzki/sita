@@ -118,7 +118,27 @@ run_action() {
         return 1
     fi
 
-    exec bash "$PROJECT_ROOT/deploy/aapanel-release.sh" "$action"
+    bash "$PROJECT_ROOT/deploy/aapanel-release.sh" "$action"
+}
+
+show_action_result() {
+    local action="$1"
+
+    case "$action" in
+        check)
+            printf '\n%b%s%b\n' "$bold$green" 'CHECK SELESAI - SERVER SIAP UNTUK UPDATE' "$reset"
+            printf 'Jika ingin memperbarui kode aplikasi sekarang, kembali ke menu lalu pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
+            printf 'Jika ini server baru, selesaikan konfigurasi GUI dan .env, lalu pilih %b[2] Bootstrap server baru%b.\n' "$cyan" "$reset"
+            ;;
+        bootstrap)
+            printf '\n%b%s%b\n' "$bold$green" 'BOOTSTRAP SELESAI' "$reset"
+            printf 'Untuk pembaruan berikutnya, pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
+            ;;
+        release)
+            printf '\n%b%s%b\n' "$bold$green" 'RELEASE SELESAI' "$reset"
+            printf 'Aplikasi sudah melalui pemeriksaan integrasi dan Security Gate. Gunakan %b[5]%b bila ingin membaca log terakhir.\n' "$cyan" "$reset"
+            ;;
+    esac
 }
 
 show_last_log() {
@@ -227,9 +247,9 @@ while true; do
     read -r -p 'Pilih menu: ' choice
     case "$choice" in
         1) create_profile ;;
-        2) run_action bootstrap ;;
-        3) run_action check ;;
-        4) run_action release ;;
+        2) if run_action bootstrap; then show_action_result bootstrap; fi ;;
+        3) if run_action check; then show_action_result check; fi ;;
+        4) if run_action release; then show_action_result release; fi ;;
         5) show_last_log ;;
         6) show_profile ;;
         7) show_tutorial ;;
