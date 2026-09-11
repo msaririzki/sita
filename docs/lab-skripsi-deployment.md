@@ -408,6 +408,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Penguatan vhost:** template kini membatasi regex Reverb pada `/app` dan `/apps` secara tepat, memakai timeout WebSocket 3600 detik, dan mewajibkan HSTS `always` untuk vhost yang mendengar HTTPS. Konfigurasi production juga divalidasi agar `LOG_LEVEL` bukan `debug` dan origin Reverb eksplisit.
 - **Makna skripsi:** kontrol deployment perlu memahami perbedaan CDN edge dan origin. Pendekatan ini mempertahankan WAF sekaligus menghasilkan bukti objektif bahwa konfigurasi Nginx dan aplikasi di origin tetap aman dan berfungsi.
 
+### E-46 - Regresi Reverb setelah hardening vhost laboratorium
+
+- **Perubahan terkontrol:** vhost aaPanel laboratorium disalin lebih dahulu ke `/var/backups/sita/nginx/100.118.75.14.conf.20260911T090829Z.before-reverb-hardening`. Regex Reverb diubah dari pola lebar menjadi `^/(app|apps)(?:/|$)`, sedangkan `proxy_read_timeout` dan `proxy_send_timeout` dinaikkan dari 60 menjadi 3600 detik.
+- **Validasi konfigurasi:** `nginx -t` lulus sebelum reload. Security Gate kemudian menghasilkan nol kegagalan dan satu peringatan HSTS yang diharapkan pada HTTP. Integration Gate lulus untuk storage, service, healthcheck, bundle frontend, dan WebSocket upgrade.
+- **Validasi release:** Atomic Release pada commit `0dc3cd0` mengaktifkan candidate `20260911T090903Z-0dc3cd0c940a`; seluruh gate internal lulus dan release sebelumnya dibersihkan sesuai retensi.
+- **Batas uji saat ini:** mode origin Cloudflare dirancang untuk HTTPS dan loopback Nginx. Lab memakai HTTP, sehingga uji end-to-end mode tersebut menunggu eksekusi read-only dari server kampus; tidak diklaim sudah lulus hanya berdasarkan simulasi.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
