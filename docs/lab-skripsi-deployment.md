@@ -309,6 +309,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi lab pada commit `edb6039`:** syntax Bash lulus dan menu panduan diuji melalui sesi noninteraktif. Tampilan warna dipakai hanya ketika terminal mendukung TTY; output tetap terbaca pada terminal tanpa warna atau saat dicatat ke log.
 - **Makna skripsi:** desain interaksi terminal dapat menjadi bagian dari artefak rancang bangun. Konsol menjembatani pengelolaan GUI aaPanel dan gate berbasis CLI, sambil mempertahankan langkah yang perlu keputusan operator.
 
+### E-33 - Konsol kembali ke menu setelah pemeriksaan berhasil
+
+- **Masalah penggunaan:** implementasi awal menjalankan runner dengan `exec`. Setelah menu `Check` selesai, proses konsol berakhir dan operator harus menjalankan `bash deploy/sita.sh` lagi untuk memilih `Release`.
+- **Perbaikan:** runner sekarang dipanggil sebagai proses anak. Setelah aksi berhasil, konsol menampilkan langkah lanjutan yang sesuai dan kembali ke menu. Aksi `Check` mengarahkan operator ke `Release` untuk update rutin atau `Bootstrap` untuk server baru.
+- **Validasi lab pada commit `d0f8811`:** siklus menu `Check` dijalankan pada VM aaPanel. Sinkronisasi GUI/runtime dan doctor lulus; konsol menampilkan status siap, arahan `Release`, lalu kembali memperlihatkan menu tanpa perlu menjalankan ulang perintah.
+- **Makna skripsi:** temuan ini menunjukkan bahwa hasil pemeriksaan harus dihubungkan dengan keputusan operasi berikutnya. Konsol tidak hanya menghasilkan status teknis, tetapi menjaga alur deployment agar operator tidak kehilangan konteks.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
