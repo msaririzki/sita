@@ -316,6 +316,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi lab pada commit `d0f8811`:** siklus menu `Check` dijalankan pada VM aaPanel. Sinkronisasi GUI/runtime dan doctor lulus; konsol menampilkan status siap, arahan `Release`, lalu kembali memperlihatkan menu tanpa perlu menjalankan ulang perintah.
 - **Makna skripsi:** temuan ini menunjukkan bahwa hasil pemeriksaan harus dihubungkan dengan keputusan operasi berikutnya. Konsol tidak hanya menghasilkan status teknis, tetapi menjaga alur deployment agar operator tidak kehilangan konteks.
 
+### E-34 - Status operasi ringkas dan pemisahan file lokal aaPanel
+
+- **Masalah penggunaan:** hasil gate lengkap tersimpan di log, tetapi operator tidak memiliki layar ringkas untuk melihat endpoint, service, dan hasil tindakan terakhir. Selain itu, `git status` pada VM membaca `.htaccess` serta `.user.ini` yang dibuat aaPanel sebagai perubahan lokal sehingga tampak seperti perubahan kode aplikasi.
+- **Perbaikan:** menu `Status aplikasi dan runtime` membaca HTTP health endpoint, status PHP-FPM/Reverb/queue/scheduler, dan kesimpulan log deployment terbaru tanpa melakukan perubahan. Halaman awal juga menampilkan branch Git serta membedakan perubahan tracked, file lokal yang belum dikenal, dan dua file lokal standar aaPanel.
+- **Validasi lab pada commit `fea4443`:** endpoint `/up` menghasilkan HTTP `200`; PHP-FPM, Reverb, queue, dan scheduler aktif. Dua file lokal aaPanel terdeteksi dan ditampilkan sebagai `HANYA FILE PANEL LOKAL`, bukan perubahan kode. File tersebut tidak dihapus atau diubah.
+- **Makna skripsi:** observabilitas deployment tidak cukup dengan log panjang. Ringkasan status mempercepat keputusan operator, sementara klasifikasi perubahan lokal menghindari tindakan korektif yang salah terhadap konfigurasi panel.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
