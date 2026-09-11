@@ -210,6 +210,11 @@ create_candidate() {
     [ ! -e "$CANDIDATE_DIR" ] || { printf 'Direktori release sudah ada: %s\n' "$CANDIDATE_DIR" >&2; exit 1; }
     install -d -m 750 "$CANDIDATE_DIR"
     git -C "$CONTROL_DIR" archive --format=tar HEAD | tar -x -C "$CANDIDATE_DIR"
+    # Nginx/PHP-FPM must be able to traverse the release directory. Files stay
+    # protected by their own modes; only the runtime group receives directory
+    # traversal at this layer.
+    run_privileged chgrp "$PHP_FPM_RUNTIME_GROUP" "$CANDIDATE_DIR"
+    run_privileged chmod 750 "$CANDIDATE_DIR"
     # Laravel tracks placeholder files in storage/. Replace this candidate-only
     # directory with the shared runtime so uploads and logs survive releases.
     rm -rf "$CANDIDATE_DIR/storage"
