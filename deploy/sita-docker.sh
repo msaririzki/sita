@@ -249,7 +249,7 @@ while true; do
     printf '  %b[4]%b  Status container dan aplikasi\n' "$cyan" "$reset"
     printf '  %b[5]%b  Lihat log Docker terakhir\n' "$cyan" "$reset"
     printf '  %b[6]%b  Panduan Docker\n' "$cyan" "$reset"
-    printf '  %b[0]%b  Kembali\n\n' "$cyan" "$reset"
+    printf '  %b[0]%b  Kembali ke pemilihan environment\n\n' "$cyan" "$reset"
 
     read -r -p 'Pilih menu Docker: ' choice
     case "$choice" in

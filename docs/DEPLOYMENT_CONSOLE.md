@@ -7,6 +7,7 @@ bash deploy/sita.sh
 ```
 
 Pilih satu environment untuk setiap tindakan. Konsol tidak pernah men-deploy Docker dan aaPanel dalam satu perintah karena keduanya adalah lingkungan uji yang terpisah.
+Pilih `0` pada submenu untuk kembali ke pemilihan environment.
 
 ## Docker
 

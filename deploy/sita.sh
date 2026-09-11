@@ -60,8 +60,8 @@ run_environment() {
     shift
 
     case "$environment" in
-        docker) exec bash "$PROJECT_ROOT/deploy/sita-docker.sh" "$@" ;;
-        aapanel) exec bash "$PROJECT_ROOT/deploy/sita-aapanel.sh" "$@" ;;
+        docker) bash "$PROJECT_ROOT/deploy/sita-docker.sh" "$@" ;;
+        aapanel) bash "$PROJECT_ROOT/deploy/sita-aapanel.sh" "$@" ;;
         *)
             printf 'Environment harus docker atau aapanel.\n' >&2
             exit 2
@@ -75,10 +75,12 @@ if [ "${1:-}" != '' ]; then
             environment="$1"
             shift
             run_environment "$environment" "$@"
+            exit $?
             ;;
         init|bootstrap|check|release)
             # Preserve the former aaPanel command contract.
             run_environment aapanel "$@"
+            exit $?
             ;;
         help|--help|-h)
             show_tutorial
@@ -101,8 +103,8 @@ while true; do
 
     read -r -p 'Pilih environment: ' choice
     case "$choice" in
-        1) run_environment docker ;;
-        2) run_environment aapanel ;;
+        1) run_environment docker; continue ;;
+        2) run_environment aapanel; continue ;;
         3) show_tutorial ;;
         0) exit 0 ;;
         *) printf '%bPilihan tidak tersedia.%b\n' "$red" "$reset" ;;
