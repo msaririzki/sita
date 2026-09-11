@@ -54,6 +54,19 @@ workspace_status() {
 
     if [ -d "$PROJECT_ROOT/.git" ]; then
         status_label 'Repository' 'TERDETEKSI' "$green"
+
+        local branch working_tree
+        branch="$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || true)"
+        if [ -n "$branch" ]; then
+            status_label 'Git branch' "$branch" "$cyan"
+        fi
+
+        working_tree="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null || true)"
+        if [ -z "$working_tree" ]; then
+            status_label 'Working tree' 'BERSIH' "$green"
+        else
+            status_label 'Working tree' 'ADA PERUBAHAN LOKAL' "$yellow"
+        fi
     else
         status_label 'Repository' 'TIDAK TERDETEKSI' "$yellow"
     fi
@@ -141,9 +154,35 @@ show_action_result() {
     esac
 }
 
+latest_deployment_log() {
+    ls -1t "$PROJECT_ROOT"/storage/logs/deployment/aapanel-*.log 2>/dev/null | head -n 1 || true
+}
+
+profile_value() {
+    local key="$1"
+
+    if [ ! -f "$PROFILE_FILE" ]; then
+        return
+    fi
+
+    grep -E "^${key}=" "$PROFILE_FILE" | tail -n 1 | cut -d '=' -f 2-
+}
+
+show_action_failure() {
+    local action="$1" latest
+
+    latest="$(latest_deployment_log)"
+    printf '\n%b%s%b\n' "$bold$red" "${action^^} BELUM DINYATAKAN SIAP" "$reset"
+    printf 'Periksa item [FAIL] pada output di atas sebelum mengulangi tindakan.\n'
+    if [ -n "$latest" ]; then
+        printf 'Log lengkap: %s\n' "$latest"
+    fi
+    printf 'Pilih %b[8] Status aplikasi dan runtime%b untuk memeriksa kondisi setelah kegagalan.\n' "$cyan" "$reset"
+}
+
 show_last_log() {
     local latest
-    latest="$(ls -1t "$PROJECT_ROOT"/storage/logs/deployment/aapanel-*.log 2>/dev/null | head -n 1 || true)"
+    latest="$(latest_deployment_log)"
     if [ -z "$latest" ]; then
         printf '%bBelum ada log deployment.%b\n' "$yellow" "$reset"
         return
@@ -156,10 +195,75 @@ show_last_log() {
 show_profile() {
     if [ -f "$PROFILE_FILE" ]; then
         printf '\nProfile aktif: %s\n' "$PROFILE_FILE"
-        cat "$PROFILE_FILE"
+        printf '  DOMAIN=%s\n' "$(profile_value DOMAIN)"
+        printf '  APP_DIR=%s\n' "$(profile_value APP_DIR)"
+        printf '  PHP_BIN=%s\n' "$(profile_value PHP_BIN)"
+        printf '  PHP_FPM_SERVICE=%s\n' "$(profile_value PHP_FPM_SERVICE)"
+        printf '  PHP_FPM_SOCKET=%s\n' "$(profile_value PHP_FPM_SOCKET)"
+        printf '  NGINX_CONFIG=%s\n' "$(profile_value NGINX_CONFIG)"
+        printf '  HEALTHCHECK_URL=%s\n' "$(profile_value HEALTHCHECK_URL)"
+        printf '  RUN_MIGRATIONS=%s\n' "$(profile_value RUN_MIGRATIONS)"
+        printf '  RUN_DEPENDENCY_AUDIT=%s\n' "$(profile_value RUN_DEPENDENCY_AUDIT)"
+        printf '%bHanya field operasional ditampilkan; profile tidak boleh menyimpan secret.%b\n' "$dim" "$reset"
     else
         printf '%bProfile belum dibuat.%b\n' "$yellow" "$reset"
     fi
+}
+
+show_operational_status() {
+    local domain health_url service slug state http_status latest log_status
+
+    printf '\n%b%s%b\n' "$bold$cyan" 'STATUS APLIKASI DAN RUNTIME' "$reset"
+    line
+
+    if [ ! -f "$PROFILE_FILE" ]; then
+        printf '%bProfile belum dibuat. Status runtime tidak dapat ditentukan.%b\n' "$yellow" "$reset"
+        return
+    fi
+
+    domain="$(profile_value DOMAIN)"
+    health_url="$(profile_value HEALTHCHECK_URL)"
+    service="$(profile_value PHP_FPM_SERVICE)"
+    slug="$(printf '%s' "$domain" | tr -cs 'A-Za-z0-9' '-')"
+
+    if command -v curl >/dev/null 2>&1 && [ -n "$health_url" ]; then
+        http_status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$health_url" 2>/dev/null || true)"
+        if [ "$http_status" = '200' ]; then
+            status_label 'Health endpoint' "HTTP 200 (${health_url})" "$green"
+        else
+            status_label 'Health endpoint' "HTTP ${http_status:-tidak-terhubung} (${health_url})" "$red"
+        fi
+    else
+        status_label 'Health endpoint' 'TIDAK DAPAT DIPERIKSA' "$yellow"
+    fi
+
+    for service in "$service" "sita-${slug}-reverb.service" "sita-${slug}-queue.service" "sita-${slug}-schedule.timer"; do
+        if [ -z "$service" ]; then
+            continue
+        fi
+
+        state="$(systemctl is-active "$service" 2>/dev/null || true)"
+        if [ "$state" = 'active' ]; then
+            status_label "$service" 'AKTIF' "$green"
+        else
+            status_label "$service" "${state:-TIDAK TERDETEKSI}" "$red"
+        fi
+    done
+
+    latest="$(latest_deployment_log)"
+    if [ -z "$latest" ]; then
+        status_label 'Deployment terakhir' 'BELUM ADA LOG' "$yellow"
+    elif grep -q 'RILIS DINYATAKAN SIAP\|BOOTSTRAP DINYATAKAN SIAP\|PEMERIKSAAN DINYATAKAN SIAP' "$latest"; then
+        log_status="$(grep -E 'RILIS DINYATAKAN SIAP|BOOTSTRAP DINYATAKAN SIAP|PEMERIKSAAN DINYATAKAN SIAP' "$latest" | tail -n 1)"
+        status_label 'Deployment terakhir' "$log_status" "$green"
+        printf '  Log terakhir      %s\n' "$latest"
+    else
+        status_label 'Deployment terakhir' 'PERLU DITINJAU' "$yellow"
+        printf '  Log terakhir      %s\n' "$latest"
+    fi
+
+    line
+    printf '%bStatus ini hanya membaca kondisi saat ini; tidak mengubah aplikasi atau aaPanel.%b\n' "$dim" "$reset"
 }
 
 show_tutorial() {
@@ -201,8 +305,9 @@ show_tutorial() {
 
     printf '%bMenu pendukung%b\n' "$bold$blue" "$reset"
     printf '  [5] Membuka 80 baris terakhir log deployment.\n'
-    printf '  [6] Menampilkan profile aktif untuk memastikan target server benar.\n'
+    printf '  [6] Menampilkan field profile aktif tanpa menampilkan secret.\n'
     printf '  [7] Membuka panduan ini.\n\n'
+    printf '  [8] Menampilkan status health endpoint, service, dan hasil log terakhir.\n\n'
 
     printf '%bCatatan keamanan%b\n' "$bold$yellow" "$reset"
     printf '  - Release berhenti bila pemeriksaan penting gagal; perbaiki penyebabnya dahulu.\n'
@@ -242,17 +347,19 @@ while true; do
     printf '  %b[5]%b  Lihat log terakhir\n' "$cyan" "$reset"
     printf '  %b[6]%b  Lihat profile aktif\n' "$cyan" "$reset"
     printf '  %b[7]%b  Panduan dan alur penggunaan\n' "$cyan" "$reset"
+    printf '  %b[8]%b  Status aplikasi dan runtime\n' "$cyan" "$reset"
     printf '  %b[0]%b  Keluar\n\n' "$cyan" "$reset"
 
     read -r -p 'Pilih menu: ' choice
     case "$choice" in
         1) create_profile ;;
-        2) if run_action bootstrap; then show_action_result bootstrap; fi ;;
-        3) if run_action check; then show_action_result check; fi ;;
-        4) if run_action release; then show_action_result release; fi ;;
+        2) if run_action bootstrap; then show_action_result bootstrap; else show_action_failure bootstrap; fi ;;
+        3) if run_action check; then show_action_result check; else show_action_failure check; fi ;;
+        4) if run_action release; then show_action_result release; else show_action_failure release; fi ;;
         5) show_last_log ;;
         6) show_profile ;;
         7) show_tutorial ;;
+        8) show_operational_status ;;
         0) exit 0 ;;
         *) printf '%bPilihan tidak tersedia.%b\n' "$red" "$reset" ;;
     esac
