@@ -264,6 +264,14 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi lab pada commit `5a8b626`:** preflight aaPanel lulus tanpa kegagalan; Integration Gate aaPanel memverifikasi empat service aktif dan WebSocket `101`; Docker menjalankan preflight, deployment, Integration Gate, dan Security Gate tanpa kegagalan. Kedua endpoint lab menggunakan HTTP sehingga HSTS tercatat sebagai peringatan, bukan kegagalan.
 - **Pengamanan data contoh:** nilai default `RUN_DB_SEED` pada template Docker diubah menjadi `false`. Seeder harus diaktifkan eksplisit pada VM lab yang database-nya kosong; tidak ada `db:seed`, `migrate:fresh`, atau penghapusan tabel pada deployment aaPanel rutin.
 
+### E-27 - Sinkronisasi aman antara GUI aaPanel dan skrip deployment
+
+- **Kasus:** vhost SITA pada awalnya dibuat langsung oleh skrip sehingga aplikasi dapat diakses, tetapi situs tidak muncul pada daftar **Website** aaPanel. Ketika situs didaftarkan lewat GUI, konfigurasi bawaan panel sempat memakai root direktori proyek, bukan `public`, dan menghasilkan 403/404 Laravel sampai konfigurasi yang benar dipulihkan.
+- **Rancangan:** registrasi website, versi PHP, extension, database, SSL, log, dan monitoring tetap menjadi tanggung jawab GUI aaPanel. Repository menambahkan `deploy/aapanel-sync.sh` sebagai pemeriksaan baca-saja terhadap entri website aaPanel, vhost aktif, root Laravel, socket PHP-FPM, proxy Reverb, extension PHP, izin `.env`, direktori runtime, dan service. Skrip tidak menulis database internal aaPanel dan tidak menimpa konfigurasi SSL.
+- **Perbaikan template:** `deploy/aapanel-nginx.conf` tidak lagi mengunci socket `php-cgi-82.sock`; operator harus mengisi `PHP_FPM_SOCKET` sesuai versi PHP, yaitu `/tmp/php-cgi-84.sock` pada VM lab. Ini mencegah vhost baru diam-diam memakai socket PHP yang salah.
+- **Validasi lab pada commit `e12ebdf`:** pemeriksaan lulus pada situs `100.118.75.14` yang terdaftar di aaPanel, memakai root `/www/wwwroot/sita/public`, socket PHP 8.4, extension wajib aktif, izin `.env` `640`, dan tiga service aktif. Salinan vhost dengan root sengaja dibuat salah menghasilkan exit code `1` dan pesan kegagalan root, tanpa mengubah vhost aktif.
+- **Makna skripsi:** otomatisasi yang aman tidak harus mengambil alih GUI panel. Nilai mekanisme ini terletak pada pendeteksian drift antara konfigurasi yang dikelola operator melalui aaPanel dan asumsi deployment aplikasi sebelum perubahan dinyatakan berhasil.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
