@@ -373,6 +373,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Batas keamanan database:** atomic rollback hanya diizinkan tanpa migration tertunda. Jika candidate membawa migration, release diblokir sebelum aktivasi karena pengembalian kode tidak otomatis membuat skema database lama aman. Migration tetap memakai migration gate, backup, checksum, dan tinjauan operator.
 - **Makna skripsi:** eksperimen menunjukkan rollback bukan hanya perintah Git. Artefak rancang bangun mencakup build terisolasi, aktivasi atomik, shared runtime, validasi pascadeploy, dan pemulihan otomatis yang dibuktikan oleh kegagalan terkendali maupun kegagalan nyata pada lab.
 
+### E-41 - Seluruh gate pascadeploy menjadi bagian transaksi atomic
+
+- **Temuan:** implementasi awal menjalankan sinkronisasi aaPanel dan Security Gate kedua pada runner setelah atomic script selesai. Kegagalan di lapisan itu tidak lagi berada dalam trap rollback candidate.
+- **Perbaikan:** integration gate, sinkronisasi aaPanel, dan Security Gate dipindahkan ke `verify_candidate()` sebelum atomic release ditandai selesai. Runner atomic kini hanya memiliki tiga fase: pre-sync, doctor, lalu atomic release beserta seluruh gate dan rollback.
+- **Validasi pada commit `487c1d2`:** release `20260911T082956Z-487c1d231781` lulus seluruh gate internal, `/up` HTTP `200`, service aktif, WebSocket `101`, Security Gate nol kegagalan dengan satu peringatan HSTS HTTP. Release lama yang tidak lagi diperlukan dibersihkan setelah kandidat dinyatakan siap.
+- **Makna skripsi:** batas transaksi deployment harus mencakup seluruh kondisi yang dipakai untuk menyatakan release siap. Jika tidak, mekanisme rollback hanya melindungi sebagian dari keputusan pascadeploy.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
