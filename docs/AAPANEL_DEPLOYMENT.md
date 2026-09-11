@@ -119,6 +119,19 @@ VITE_REVERB_SCHEME="${REVERB_SCHEME}"
 
 Jangan commit `.env`.
 
+### Registrasi situs dan pemantauan aaPanel
+
+Pembuatan situs lewat menu **Website > Add site** adalah langkah satu kali. Langkah ini membuat entri situs di GUI aaPanel, sehingga status, konfigurasi, access log, error log, PHP version, SSL, dan batas resource dapat dipantau oleh operator kampus. Skrip `deploy/aapanel-deploy.sh` sengaja tidak menulis database internal aaPanel dan tidak membuat entri situs secara otomatis; operasi itu tidak memiliki API stabil dan dapat merusak konfigurasi yang dikelola panel.
+
+Sesudah situs dibuat, buka tombol **Conf** pada entri tersebut dan terapkan konfigurasi dari `deploy/aapanel-nginx.conf.template` dengan `server_name` serta jalur aplikasi yang sesuai. Pastikan `root` tetap mengarah ke `<path-aplikasi>/public`. Konfigurasi standar hasil **Add site** memakai folder aplikasi sebagai root dan akan menghasilkan 403/404 pada Laravel. Uji konfigurasi sebelum disimpan:
+
+```bash
+/www/server/nginx/sbin/nginx -t
+/etc/init.d/nginx reload
+```
+
+Deployment berikutnya cukup dijalankan dari terminal aaPanel. Ia memperbarui source, dependency, asset, cache Laravel, migrasi bila `RUN_MIGRATIONS=true`, dan layanan runtime; entri website aaPanel tidak berubah. Karena itu, database aplikasi hanya dapat berubah ketika migrasi dijalankan, bukan karena registrasi situs pada GUI.
+
 ## Precheck Server
 
 Jalankan:
@@ -186,7 +199,7 @@ bash deploy/aapanel-deploy.sh
 
 Jika nama service PHP-FPM aaPanel berbeda, isi `PHP_FPM_SERVICE`. Jika restart PHP-FPM dikelola manual oleh panel, pakai `RESTART_PHP_FPM=false`.
 
-Jika PHP-FPM memakai group selain `www`, isi `PHP_FPM_RUNTIME_GROUP` agar `storage/` dan `bootstrap/cache/` dapat ditulis oleh proses PHP-FPM:
+Jika PHP-FPM memakai group selain `www`, isi `PHP_FPM_RUNTIME_GROUP` agar `storage/`, `bootstrap/cache/`, dan file `.env` dapat dipakai oleh proses PHP-FPM. Skrip mempertahankan pemilik `.env`, mengubah grupnya ke group runtime, dan menerapkan mode `640` sehingga hanya pemilik dan PHP-FPM yang dapat membacanya:
 
 ```bash
 PHP_FPM_RUNTIME_GROUP=www DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
