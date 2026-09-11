@@ -39,9 +39,38 @@ status_label() {
     printf '  %-16s %b%s%b\n' "$label" "$color" "$value" "$reset"
 }
 
+profile_value() {
+    local key="$1"
+
+    if [ ! -f "$PROFILE_FILE" ]; then
+        return
+    fi
+
+    grep -E "^${key}=" "$PROFILE_FILE" | tail -n 1 | cut -d '=' -f 2-
+}
+
+deployment_strategy() {
+    local strategy
+    strategy="$(profile_value DEPLOYMENT_STRATEGY)"
+    printf '%s' "${strategy:-in-place}"
+}
+
+release_menu_copy() {
+    if [ "$(deployment_strategy)" = 'atomic' ]; then
+        printf '%s' 'Atomic Release + rollback kode'
+    else
+        printf '%s' 'Release update aplikasi'
+    fi
+}
+
 workspace_status() {
     if [ -f "$PROFILE_FILE" ]; then
         status_label 'Profile' 'SIAP' "$green"
+        if [ "$(deployment_strategy)" = 'atomic' ]; then
+            status_label 'Mode release' 'ATOMIC + ROLLBACK KODE' "$cyan"
+        else
+            status_label 'Mode release' 'IN-PLACE + MIGRATION GATE' "$yellow"
+        fi
     else
         status_label 'Profile' 'BELUM DIBUAT' "$yellow"
     fi
@@ -179,7 +208,11 @@ show_action_result() {
             printf 'Untuk pembaruan berikutnya, pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
             ;;
         release)
-            printf '\n%b%s%b\n' "$bold$green" 'RELEASE SELESAI' "$reset"
+            if [ "$(deployment_strategy)" = 'atomic' ]; then
+                printf '\n%b%s%b\n' "$bold$green" 'ATOMIC RELEASE SELESAI' "$reset"
+            else
+                printf '\n%b%s%b\n' "$bold$green" 'RELEASE SELESAI' "$reset"
+            fi
             printf 'Aplikasi sudah melalui pemeriksaan integrasi dan Security Gate. Gunakan %b[5]%b bila ingin membaca log terakhir.\n' "$cyan" "$reset"
             ;;
     esac
@@ -187,16 +220,6 @@ show_action_result() {
 
 latest_deployment_log() {
     ls -1t "$PROJECT_ROOT"/storage/logs/deployment/aapanel-*.log 2>/dev/null | head -n 1 || true
-}
-
-profile_value() {
-    local key="$1"
-
-    if [ ! -f "$PROFILE_FILE" ]; then
-        return
-    fi
-
-    grep -E "^${key}=" "$PROFILE_FILE" | tail -n 1 | cut -d '=' -f 2-
 }
 
 show_action_failure() {
@@ -342,11 +365,16 @@ show_tutorial() {
     printf '  [2] Siapkan server baru (deploy awal)\n'
     printf '      Dipakai sekali untuk deploy awal setelah Check lulus. Menjalankan\n'
     printf '      deploy awal dan memasang service Reverb, queue, serta scheduler.\n\n'
-    printf '  [4] Release update aplikasi\n'
+    printf '  [4] %s\n' "$(release_menu_copy)"
     printf '      Dipakai setiap ada pembaruan kode. Menjalankan pemeriksaan awal,\n'
-    printf '      backup otomatis + migration bila terdeteksi dan Anda menekan Y,\n'
-    printf '      lalu pemeriksaan integrasi dan Security Gate. Mode atomic membuat\n'
-    printf '      candidate release dan mengembalikan kode bila gate pascaaktivasi gagal.\n\n'
+    if [ "$(deployment_strategy)" = 'atomic' ]; then
+        printf '      membangun candidate release, mengaktifkan symlink current, lalu\n'
+        printf '      mengembalikan kode bila gate pascaaktivasi gagal. Migration baru\n'
+        printf '      diblokir agar rollback kode tidak memberi rasa aman palsu.\n\n'
+    else
+        printf '      backup otomatis + migration bila terdeteksi dan Anda menekan Y,\n'
+        printf '      lalu pemeriksaan integrasi dan Security Gate.\n\n'
+    fi
 
     printf '%bMenu pendukung%b\n' "$bold$blue" "$reset"
     printf '  [5] Membuka 80 baris terakhir log deployment.\n'
@@ -356,8 +384,13 @@ show_tutorial() {
 
     printf '%bCatatan keamanan%b\n' "$bold$yellow" "$reset"
     printf '  - Release berhenti bila pemeriksaan penting gagal; perbaiki penyebabnya dahulu.\n'
-    printf '  - Bila ada migration, Release menampilkan daftar dan meminta konfirmasi Y.\n'
-    printf '    Setelah Y, backup MySQL/MariaDB diverifikasi sebelum migration dijalankan.\n'
+    if [ "$(deployment_strategy)" = 'atomic' ]; then
+        printf '  - Atomic Release hanya untuk update tanpa migration tertunda. Gunakan\n'
+        printf '    migration gate terkontrol sebelum kembali menjalankan atomic release.\n'
+    else
+        printf '  - Bila ada migration, Release menampilkan daftar dan meminta konfirmasi Y.\n'
+        printf '    Setelah Y, backup MySQL/MariaDB diverifikasi sebelum migration dijalankan.\n'
+    fi
     printf '  - PHP extension diperiksa oleh Check. Perubahan extension pada runtime PHP\n'
     printf '    yang dipakai situs lain harus dilakukan dengan hati-hati melalui aaPanel.\n\n'
 
@@ -388,7 +421,11 @@ while true; do
     printf '  %b[1]%b  Buat profile server       %bSekali per server, tanpa secret%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[2]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[3]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[4]%b  Release update aplikasi   %bDeploy update + integration/security gate%b\n' "$cyan" "$reset" "$dim" "$reset"
+    if [ "$(deployment_strategy)" = 'atomic' ]; then
+        printf '  %b[4]%b  Atomic Release            %bCandidate + gate + rollback kode%b\n' "$cyan" "$reset" "$dim" "$reset"
+    else
+        printf '  %b[4]%b  Release update aplikasi   %bDeploy update + integration/security gate%b\n' "$cyan" "$reset" "$dim" "$reset"
+    fi
     printf '  %b[5]%b  Lihat log terakhir\n' "$cyan" "$reset"
     printf '  %b[6]%b  Lihat profile aktif\n' "$cyan" "$reset"
     printf '  %b[7]%b  Panduan dan alur penggunaan\n' "$cyan" "$reset"
