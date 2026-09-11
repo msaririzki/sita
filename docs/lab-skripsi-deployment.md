@@ -387,6 +387,14 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Artefak uji lama:** migration probe yang tersisa di control checkout diverifikasi berstatus `Pending`, sehingga belum mengubah skema database. File probe dapat dihapus secara terarah tanpa melakukan rollback atau mengubah tabel SITA. File lokal aaPanel `.htaccess` dan `.user.ini` dipertahankan.
 - **Makna skripsi:** pengujian deployment tidak hanya memeriksa apakah aplikasi hidup. Audit juga perlu menilai ketahanan tooling terhadap konfigurasi operator dan artefak eksperimen agar status yang disajikan tidak menyesatkan.
 
+### E-43 - Validasi regresi akhir pada Docker dan aaPanel
+
+- **aaPanel:** release penuh pada commit `a1dc97a` membentuk candidate `20260911T084052Z-a1dc97abc97f`. Candidate lolos build Composer dan Vite, tidak memiliki migration tertunda, diaktifkan melalui symlink `current`, lalu melewati Integration Gate, synchronization check, dan Security Gate. Health endpoint menghasilkan HTTP `200`; PHP-FPM, Reverb, queue, dan scheduler aktif; Integration Gate mengonfirmasi WebSocket upgrade `101`.
+- **Kondisi akhir aaPanel:** Nginx tetap menunjuk ke `current/public`, profile lokal memiliki mode `600`, tiga release tersimpan sesuai `RELEASE_KEEP=3`, dan migration probe sudah tidak ada. Status Git hanya menampilkan `.htaccess` serta `.user.ini` lokal aaPanel; runtime `.sita-release/` sudah tidak dilaporkan sebagai perubahan source.
+- **Docker:** `bash deploy/sita.sh docker check` pada commit yang sama lulus untuk Compose, enam container, healthcheck, storage publik, bundle Reverb, dan WebSocket. Security Gate Docker menghasilkan nol kegagalan dan satu peringatan HSTS karena URL lab memakai HTTP.
+- **Validasi statis:** seluruh skrip pada `deploy/` dan `scripts/` lulus `bash -n`; pemeriksaan `git diff --check` juga lulus. ShellCheck tidak tersedia pada workstation sehingga tidak dijadikan klaim hasil uji.
+- **Makna skripsi:** hasil ini menjadi baseline stabil untuk eksperimen gangguan berikutnya. Reset VM tidak dilakukan karena baseline ini adalah bukti uji yang aktif; pengujian reset harus memakai snapshot atau VM bersih terpisah agar bukti dan konfigurasi pembanding tidak hilang.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
