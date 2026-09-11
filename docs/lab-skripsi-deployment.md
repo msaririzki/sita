@@ -411,6 +411,12 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Latar belakang:** Topologi produksi belum dapat disimpulkan hanya dari DNS Cloudflare. Origin dapat menerima HTTPS langsung, menerima HTTP lokal dari `cloudflared`, atau tidak dapat dijangkau lewat loopback pada host pemeriksa.
 - **Perbaikan:** mode `HTTP_PROBE_MODE=auto` sekarang mencoba healthcheck origin HTTPS dengan TLS/SNI dan `--resolve`, dilanjutkan origin HTTP `127.0.0.1:80` dengan header `Host` domain, lalu jalur publik. Mode eksplisit `origin-https`, `origin-http`, dan `public` tersedia apabila administrator ingin mengunci perilaku setelah topologi diketahui. `origin` lama tetap alias bagi `origin-https`.
 - **Hasil uji awal:** validasi sintaks lulus. Simulasi dengan `curl` terkontrol menunjukkan ketika origin HTTPS tidak merespons dan origin HTTP lokal mengembalikan `200`, gate memilih `origin-http`, membawa `Host` domain yang benar, serta tetap menguji endpoint sensitif dan header. Pengujian end-to-end `origin-http` akan dilakukan setelah Cloudflare Tunnel lab dibuat; hasilnya harus dicatat terpisah dari pengujian origin HTTPS yang telah ada.
+
+### E-48 - HSTS pada gateway Docker di belakang Cloudflare Tunnel
+
+- **Kondisi uji:** Tunnel Docker `sita-docker.ikydev.com` telah sehat dan healthcheck publik menghasilkan HTTP 200. Release Docker pertama sesudah perubahan URL Reverb lulus Integration Gate, termasuk WebSocket, tetapi Security Gate gagal satu item karena respons HTTPS publik belum memiliki `Strict-Transport-Security`.
+- **Akar masalah:** Cloudflare melakukan terminasi HTTPS dan meneruskan request ke Nginx Docker melalui HTTP. Nginx tetap perlu mengirim header HSTS agar Cloudflare meneruskannya kepada browser pada respons HTTPS publik.
+- **Perbaikan:** gateway Docker menambahkan `Strict-Transport-Security: max-age=31536000` dengan `always`. Release berikutnya wajib membuktikan header di endpoint publik, tanpa membuka port origin baru maupun melemahkan Tunnel.
 - **Penguatan vhost:** template kini membatasi regex Reverb pada `/app` dan `/apps` secara tepat, memakai timeout WebSocket 3600 detik, dan mewajibkan HSTS `always` untuk vhost yang mendengar HTTPS. Konfigurasi production juga divalidasi agar `LOG_LEVEL` bukan `debug` dan origin Reverb eksplisit.
 - **Makna skripsi:** kontrol deployment perlu memahami perbedaan CDN edge dan origin. Pendekatan ini mempertahankan WAF sekaligus menghasilkan bukti objektif bahwa konfigurasi Nginx dan aplikasi di origin tetap aman dan berfungsi.
 
