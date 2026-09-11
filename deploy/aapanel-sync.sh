@@ -11,6 +11,7 @@ PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_SOCKET="${PHP_FPM_SOCKET:-}"
 NGINX_CONFIG="${NGINX_CONFIG:-/www/server/panel/vhost/nginx/${DOMAIN}.conf}"
+NGINX_VHOST_DIR="${NGINX_VHOST_DIR:-$(dirname "$NGINX_CONFIG")}"
 NGINX_BIN="${NGINX_BIN:-/www/server/nginx/sbin/nginx}"
 PANEL_DATABASE="${PANEL_DATABASE:-/www/server/panel/data/default.db}"
 CHECK_SERVICES="${CHECK_SERVICES:-true}"
@@ -90,6 +91,11 @@ if [ -z "$PHP_FPM_SOCKET" ]; then
     esac
 fi
 
+if [[ "$PHP_FPM_SOCKET" != /tmp/php-cgi-[0-9][0-9].sock ]]; then
+    printf 'PHP_FPM_SOCKET harus berupa socket aaPanel, contoh /tmp/php-cgi-84.sock.\n' >&2
+    exit 2
+fi
+
 printf 'SITA aaPanel synchronization check\n'
 printf 'Domain: %s\nApplication: %s\nNginx config: %s\n\n' "$DOMAIN" "$APP_DIR" "$NGINX_CONFIG"
 
@@ -153,6 +159,16 @@ else
     warn "Binary Nginx aaPanel tidak ditemukan: ${NGINX_BIN}"
 fi
 
+matching_vhosts="$(run_privileged grep -rl --include='*.conf' -F "fastcgi_pass unix:${PHP_FPM_SOCKET};" "$NGINX_VHOST_DIR" 2>/dev/null || true)"
+matching_count="$(printf '%s\n' "$matching_vhosts" | sed '/^$/d' | wc -l | tr -d ' ')"
+if [ "$matching_count" -eq 1 ]; then
+    ok "Runtime PHP ${PHP_FPM_SOCKET} hanya dipakai vhost SITA"
+elif [ "$matching_count" -gt 1 ]; then
+    warn "Runtime PHP ${PHP_FPM_SOCKET} dipakai ${matching_count} vhost. Jangan memasang/menghapus extension otomatis; perubahan berlaku global untuk PHP tersebut."
+else
+    warn "Tidak dapat menemukan pemakai socket ${PHP_FPM_SOCKET} pada vhost aaPanel"
+fi
+
 if [ -x "$PHP_BIN" ]; then
     if "$PHP_BIN" -r 'exit(version_compare(PHP_VERSION, "8.4.0", ">=") ? 0 : 1);' >/dev/null 2>&1; then
         ok "PHP CLI memenuhi minimal 8.4"
@@ -210,6 +226,7 @@ fi
 printf '\nPeran operasional:\n'
 printf '%s\n' '  GUI aaPanel: website satu kali, PHP/extension, database, SSL, log, dan monitoring.'
 printf '%s\n' '  Git dan skrip: source, build, cache, migrasi terkontrol, service, dan security/integration gate.'
+printf '%s\n' '  Extension PHP: boleh diubah hanya setelah runtime PHP dipastikan tidak dipakai situs lain atau setelah maintenance window disetujui.'
 printf '%s\n' '  Sinkronisasi ini hanya membaca dan memverifikasi; tidak menimpa SSL atau konfigurasi GUI.'
 
 if [ "$FAILED" -ne 0 ]; then

@@ -136,6 +136,8 @@ Deployment berikutnya cukup dijalankan dari terminal aaPanel. Ia memperbarui sou
 
 Gunakan GUI aaPanel hanya untuk komponen server yang memang dikelola aaPanel: membuat website, memasang Nginx dan PHP 8.4, mengaktifkan extension PHP, membuat database/user, menerbitkan SSL, dan membaca log. Extension harus dipasang melalui **App Store > PHP 8.4 > Install extensions**. Jangan memakai skrip yang memanipulasi database internal aaPanel atau memasang extension melalui API internal yang tidak terdokumentasi; versi panel dan build PHP dapat berubah.
 
+Extension bukan pengaturan per website: aaPanel mengelolanya pada runtime PHP yang dipilih. Karena itu extension dan reload PHP-FPM dapat berdampak pada setiap vhost yang memakai socket PHP yang sama. `aapanel-sync.sh` menghitung pemakai socket PHP-FPM pada seluruh vhost. Jika output menunjukkan runtime dipakai lebih dari satu vhost, jangan aktifkan atau hapus extension otomatis. Lakukan perubahan melalui GUI pada maintenance window, uji seluruh situs yang memakai runtime tersebut, lalu jalankan sinkronisasi kembali. Otomatisasi perubahan extension hanya layak bila socket/runtime PHP terbukti khusus untuk SITA.
+
 Gunakan terminal hanya untuk proses yang dapat diulang dari repository: precheck, deployment source, Composer/NPM build, cache, migrasi yang disetujui, service Reverb/queue/scheduler, serta gate keamanan. Sebelum deploy pertama dan setelah perubahan konfigurasi server, jalankan pemeriksaan sinkronisasi berikut. Skrip ini hanya membaca kondisi server; ia tidak mengubah database aaPanel, SSL, atau vhost.
 
 ```bash
