@@ -280,6 +280,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Perbaikan:** `prepare_runtime_permissions()` kini menjalankan `chgrp` dan `chmod` rekursif melalui `sudo` bila tersedia. Dengan demikian, seluruh storage dan cache dapat diseragamkan ke group PHP-FPM tanpa bergantung pada pemilik lama setiap berkas.
 - **Makna skripsi:** pemeriksaan permission tidak cukup hanya menguji akses tulis PHP-FPM saat kondisi normal. Proses deployment juga harus tahan terhadap artefak administratif yang sebelumnya dibuat oleh root.
 
+### E-29 - Restart queue normal sempat terbaca sebagai service tidak aktif
+
+- **Gangguan yang ditemukan:** setelah `artisan queue:restart`, worker lama keluar sesuai sinyal restart. Systemd menjalankan worker baru sekitar tiga detik kemudian, tetapi Integration Gate memeriksa status hanya sekali dan langsung menolak release.
+- **Bukti:** log systemd menunjukkan worker baru aktif setelah jeda restart; root aplikasi dan `/up` tetap HTTP `200`, Reverb, scheduler, storage publik, dan WebSocket juga lulus.
+- **Perbaikan:** pemeriksaan service kini menunggu secara terbatas, default maksimal sepuluh kali dengan interval satu detik. Service baru dinyatakan gagal bila tetap tidak aktif setelah seluruh percobaan. Batas waktu ini menghindari false positive tanpa menyembunyikan kegagalan yang menetap.
+- **Makna skripsi:** validasi pascadeploy perlu membedakan transisi service yang diharapkan dari kegagalan runtime. Metrik evaluasi harus mencatat waktu readiness service, bukan hanya status pada satu titik waktu.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.

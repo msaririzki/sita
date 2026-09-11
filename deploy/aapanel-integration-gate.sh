@@ -11,6 +11,8 @@ PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 CHECK_SERVICES="${CHECK_SERVICES:-true}"
 CHECK_WEBSOCKET="${CHECK_WEBSOCKET:-true}"
+SERVICE_READY_ATTEMPTS="${SERVICE_READY_ATTEMPTS:-10}"
+SERVICE_READY_DELAY_SECONDS="${SERVICE_READY_DELAY_SECONDS:-1}"
 
 FAILED=0
 
@@ -52,13 +54,20 @@ service_slug() {
 }
 
 check_service() {
-    local service="$1"
+    local service="$1" attempt
 
-    if systemctl is-active --quiet "$service"; then
-        ok "Service aktif: $service"
-    else
-        fail "Service tidak aktif: $service"
-    fi
+    for attempt in $(seq 1 "$SERVICE_READY_ATTEMPTS"); do
+        if systemctl is-active --quiet "$service"; then
+            ok "Service aktif: $service"
+            return
+        fi
+
+        if [ "$attempt" -lt "$SERVICE_READY_ATTEMPTS" ]; then
+            sleep "$SERVICE_READY_DELAY_SECONDS"
+        fi
+    done
+
+    fail "Service tidak aktif setelah ${SERVICE_READY_ATTEMPTS} pemeriksaan: $service"
 }
 
 check_runtime_write_access() {
