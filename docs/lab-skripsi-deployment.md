@@ -345,6 +345,15 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Navigasi:** submenu dapat kembali ke pemilihan environment tanpa menutup konsol. Tidak ada release, perubahan container, vhost, database, atau server produksi selama validasi ini; Check hanya menjalankan pemeriksaan dan marker storage sementara yang dibersihkan oleh gate.
 - **Makna skripsi:** artefak yang sama memberi alur operator konsisten di dua lingkungan tanpa menyamakan implementasi infrastrukturnya. Hal ini mendukung evaluasi DevSecOps yang membandingkan keputusan gate, waktu, dan intervensi manual secara fair pada Docker maupun aaPanel.
 
+### E-38 - False positive extension PHP setelah Release aaPanel diperbaiki
+
+- **Gejala:** Release aaPanel pada 11 September 2026 sempat berhenti pada validasi sinkronisasi pascadeploy dengan laporan `bcmath`, `dom`, `filter`, dan `openssl` tidak aktif. Pemeriksaan awal sebelum deploy sebelumnya menyatakan extension yang sama aktif.
+- **Investigasi:** pembacaan langsung `/www/server/php/84/bin/php -m` menunjukkan seluruh extension benar-benar aktif. Lima kali `aapanel-sync.sh` berikutnya juga lulus. Endpoint `/up` tetap HTTP `200`, sementara PHP-FPM, Reverb, queue, dan scheduler tetap aktif. Jadi kejadian tersebut adalah false positive gate, bukan perubahan extension aaPanel.
+- **Akar masalah:** `aapanel-sync.sh` dan sebagian pemeriksaan aaPanel memakai pipeline `php -m | grep -q` saat `pipefail` aktif. Untuk extension yang ditemukan lebih awal, `grep -q` dapat menutup pipe terlebih dahulu dan membuat proses `php -m` menerima SIGPIPE. Status pipeline lalu terbaca gagal meskipun extension tersedia.
+- **Perbaikan:** daftar module PHP sekarang dibaca satu kali, dinormalisasi ke huruf kecil, lalu dicocokkan di memori tanpa pipeline `grep -q`. Pola yang sama diterapkan pada sync, doctor, dan validasi deployment agar keputusan sebelum dan sesudah deploy konsisten.
+- **Validasi pada commit `3660fc9`:** Check aaPanel lulus dengan seluruh extension aktif. Release penuh pada VM lab kemudian lulus sampai pascadeploy: sinkronisasi, doctor, Composer sementara terverifikasi, build Vite, restart service, Integration Gate, Security Gate, serta endpoint `/up` HTTP `200`. Security Gate menghasilkan nol kegagalan dan satu peringatan HSTS karena lab masih HTTP.
+- **Makna skripsi:** gate yang hanya memberi status gagal belum tentu benar. Pengukuran false positive dan verifikasi pascakegagalan memperkuat evaluasi mekanisme DevSecOps, karena otomatisasi yang baik harus mendeteksi gangguan nyata tanpa menolak release sehat.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
