@@ -151,6 +151,28 @@ bash deploy/aapanel-sync.sh
 
 Sebelum menyalin template Nginx, ganti `DOMAIN`, `PROJECT_ROOT`, dan `PHP_FPM_SOCKET`; untuk PHP 8.4 aaPanel, nilai socket biasanya `/tmp/php-cgi-84.sock`. Setelah perubahan lewat tombol **Conf**, uji `nginx -t`, reload Nginx, lalu jalankan kembali `aapanel-sync.sh` dan integration gate.
 
+### Satu perintah untuk operator
+
+File pemeriksaan tetap dipisah supaya dapat diuji dan dirawat, tetapi operator tidak perlu menjalankannya satu per satu. Salin profile tanpa rahasia berikut sekali saja:
+
+```bash
+cp deploy/aapanel-profile.example.env deploy/aapanel-profile.env
+```
+
+Isi domain dan path server, lalu gunakan satu perintah untuk pemeriksaan tanpa perubahan:
+
+```bash
+bash deploy/aapanel-release.sh check
+```
+
+Untuk rilis aplikasi, gunakan:
+
+```bash
+bash deploy/aapanel-release.sh release
+```
+
+Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Nilai default `RUN_MIGRATIONS=false`; ubah menjadi `true` di profile hanya setelah migration direview dan backup database tersedia.
+
 ## Precheck Server
 
 Jalankan:

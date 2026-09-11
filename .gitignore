@@ -14,6 +14,8 @@
 .env
 .env.backup
 .env.production
+/deploy/aapanel-profile.env
+/deploy/aapanel-extension.local.sh
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

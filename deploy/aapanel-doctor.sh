@@ -78,7 +78,7 @@ if command -v "$COMPOSER_BIN" >/dev/null 2>&1 && command -v "$PHP_BIN" >/dev/nul
     if "$PHP_BIN" -r 'exit(version_compare($argv[1], "2.2.0", ">=") ? 0 : 1);' "$COMPOSER_RUNTIME_API_VERSION" >/dev/null 2>&1; then
         ok "Composer runtime API ${COMPOSER_RUNTIME_API_VERSION} memenuhi minimal 2.2"
     else
-        fail "Composer runtime API ${COMPOSER_RUNTIME_API_VERSION:-unknown} belum memenuhi minimal 2.2"
+        warn "Composer runtime API ${COMPOSER_RUNTIME_API_VERSION:-unknown} belum memenuhi minimal 2.2. Skrip deploy akan memakai Composer sementara terverifikasi tanpa mengubah Composer global aaPanel."
     fi
 fi
 
