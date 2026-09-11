@@ -226,13 +226,14 @@ prepare_runtime_permissions() {
     if command -v sudo >/dev/null 2>&1; then
         sudo chgrp -R "$runtime_group" storage bootstrap/cache
         sudo chgrp "$runtime_group" .env
+        sudo chmod -R ug+rwX storage bootstrap/cache
+        sudo chmod 640 .env
     else
         chgrp -R "$runtime_group" storage bootstrap/cache
         chgrp "$runtime_group" .env
+        chmod -R ug+rwX storage bootstrap/cache
+        chmod 640 .env
     fi
-
-    chmod -R ug+rwX storage bootstrap/cache
-    chmod 640 .env
 }
 
 run_healthcheck() {

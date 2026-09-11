@@ -273,6 +273,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Keamanan multiwebsite:** pemeriksaan sinkronisasi juga menghitung seluruh vhost yang memakai socket PHP-FPM SITA. Bila runtime dipakai bersama, instalasi atau penghapusan extension tidak boleh diautomasi karena extension serta reload berlaku pada seluruh situs yang memakai versi PHP tersebut. Pada VM lab socket `/tmp/php-cgi-84.sock` hanya ditemukan pada vhost SITA.
 - **Makna skripsi:** otomatisasi yang aman tidak harus mengambil alih GUI panel. Nilai mekanisme ini terletak pada pendeteksian drift antara konfigurasi yang dikelola operator melalui aaPanel dan asumsi deployment aplikasi sebelum perubahan dinyatakan berhasil.
 
+### E-28 - Runner rilis mendeteksi artefak runtime yang dimiliki root
+
+- **Gangguan yang ditemukan saat validasi release satu-perintah:** build Composer dan Vite berhasil, tetapi normalisasi permission gagal pada sejumlah laporan eksperimen lama di `storage/` yang dibuat sebagai `root`. Deployment berjalan sebagai `ServerDeploy`, sehingga `chmod` tanpa privilese tidak dapat mengubah file tersebut.
+- **Dampak terukur:** runner menghentikan fase deployment dan tidak menampilkan status rilis siap. Trap deployment mematikan maintenance mode; verifikasi segera setelah kegagalan menunjukkan root dan `/up` kembali HTTP `200`.
+- **Perbaikan:** `prepare_runtime_permissions()` kini menjalankan `chgrp` dan `chmod` rekursif melalui `sudo` bila tersedia. Dengan demikian, seluruh storage dan cache dapat diseragamkan ke group PHP-FPM tanpa bergantung pada pemilik lama setiap berkas.
+- **Makna skripsi:** pemeriksaan permission tidak cukup hanya menguji akses tulis PHP-FPM saat kondisi normal. Proses deployment juga harus tahan terhadap artefak administratif yang sebelumnya dibuat oleh root.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
