@@ -229,7 +229,7 @@ show_profile() {
 }
 
 show_operational_status() {
-    local domain health_url service slug state http_status latest log_status
+    local domain health_url service slug state http_status latest log_status warning_count
 
     printf '\n%b%s%b\n' "$bold$cyan" 'STATUS APLIKASI DAN RUNTIME' "$reset"
     line
@@ -278,6 +278,15 @@ show_operational_status() {
     else
         status_label 'Deployment terakhir' 'PERLU DITINJAU' "$yellow"
         printf '  Log terakhir      %s\n' "$latest"
+    fi
+
+    if [ -n "$latest" ]; then
+        warning_count="$(grep -Ec '^\[WARN\]|^WARN ' "$latest" 2>/dev/null || true)"
+        if [ "${warning_count:-0}" -gt 0 ]; then
+            status_label 'Peringatan log' "${warning_count} - lihat menu [5]" "$yellow"
+        else
+            status_label 'Peringatan log' 'TIDAK ADA' "$green"
+        fi
     fi
 
     line
