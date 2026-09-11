@@ -17,6 +17,7 @@
 /deploy/aapanel-profile.env
 /deploy/docker-profile.env
 /deploy/aapanel-extension.local.sh
+/.sita-release/
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

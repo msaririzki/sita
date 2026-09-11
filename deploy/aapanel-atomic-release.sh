@@ -24,14 +24,30 @@ CURRENT_LINK="${CURRENT_LINK:-${RELEASE_ROOT}/current}"
 RELEASE_KEEP="${RELEASE_KEEP:-3}"
 MANAGE_NGINX_ROOT="${MANAGE_NGINX_ROOT:-prompt}"
 RELEASE_MIGRATION_POLICY="${RELEASE_MIGRATION_POLICY:-block}"
+ATOMIC_REEXECUTED="${AAPANEL_ATOMIC_REEXECUTED:-false}"
 
 if [ ! -d "$CONTROL_DIR/.git" ]; then
     printf 'Atomic release membutuhkan checkout Git pada APP_DIR: %s\n' "$CONTROL_DIR" >&2
     exit 2
 fi
 
+if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    printf 'DOMAIN tidak valid: %s\n' "$DOMAIN" >&2
+    exit 2
+fi
+
 if [[ "$RELEASE_ROOT" != /* ]] || [[ "$CURRENT_LINK" != "${RELEASE_ROOT}"/* ]]; then
     printf 'RELEASE_ROOT dan CURRENT_LINK harus berupa path absolut; CURRENT_LINK harus berada di RELEASE_ROOT.\n' >&2
+    exit 2
+fi
+
+if [[ ! "$RELEASE_KEEP" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'RELEASE_KEEP harus berupa bilangan bulat positif. Nilai sekarang: %s\n' "$RELEASE_KEEP" >&2
+    exit 2
+fi
+
+if [ -e "$CURRENT_LINK" ] && [ ! -L "$CURRENT_LINK" ]; then
+    printf 'CURRENT_LINK sudah ada tetapi bukan symlink: %s\n' "$CURRENT_LINK" >&2
     exit 2
 fi
 
@@ -202,8 +218,40 @@ prepare_layout() {
 
 create_candidate() {
     step 'Ambil source dan buat candidate release'
+    local previous_revision revision release_id
+    previous_revision="$(git -C "$CONTROL_DIR" rev-parse HEAD)"
     git -C "$CONTROL_DIR" pull --ff-only
-    local revision release_id
+
+    if [ "$ATOMIC_REEXECUTED" != 'true' ] && ! git -C "$CONTROL_DIR" diff --quiet "$previous_revision" HEAD -- \
+        deploy/aapanel-atomic-release.sh \
+        deploy/aapanel-integration-gate.sh \
+        deploy/aapanel-services.sh \
+        deploy/aapanel-sync.sh \
+        scripts/security-gate.sh; then
+        printf 'Skrip deployment diperbarui oleh Git. Memulai ulang runner dengan versi terbaru.\n'
+        exec env \
+            AAPANEL_ATOMIC_REEXECUTED=true \
+            APP_DIR="$CONTROL_DIR" \
+            DOMAIN="$DOMAIN" \
+            PHP_BIN="$PHP_BIN" \
+            COMPOSER_BIN="$COMPOSER_BIN" \
+            NPM_BIN="$NPM_BIN" \
+            PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
+            PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+            PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+            HEALTHCHECK_URL="$HEALTHCHECK_URL" \
+            NGINX_CONFIG="$NGINX_CONFIG" \
+            NGINX_BIN="$NGINX_BIN" \
+            RELEASE_ROOT="$RELEASE_ROOT" \
+            RELEASES_DIR="$RELEASES_DIR" \
+            SHARED_DIR="$SHARED_DIR" \
+            CURRENT_LINK="$CURRENT_LINK" \
+            RELEASE_KEEP="$RELEASE_KEEP" \
+            MANAGE_NGINX_ROOT="$MANAGE_NGINX_ROOT" \
+            RELEASE_MIGRATION_POLICY="$RELEASE_MIGRATION_POLICY" \
+            bash "$CONTROL_DIR/deploy/aapanel-atomic-release.sh"
+    fi
+
     revision="$(git -C "$CONTROL_DIR" rev-parse --short=12 HEAD)"
     release_id="$(date -u +%Y%m%dT%H%M%SZ)-${revision}"
     CANDIDATE_DIR="${RELEASES_DIR}/${release_id}"
@@ -318,15 +366,9 @@ activate_candidate() {
         PREVIOUS_RELEASE="$(readlink -f "$CURRENT_LINK")"
     fi
     ln -s "$CANDIDATE_DIR" "${CURRENT_LINK}.next"
-    if [ -n "$PREVIOUS_RELEASE" ]; then
-        mv -Tf "${CURRENT_LINK}.next" "$CURRENT_LINK"
-        ACTIVATED=true
-        ensure_nginx_points_to_current
-    else
-        mv -Tf "${CURRENT_LINK}.next" "$CURRENT_LINK"
-        ACTIVATED=true
-        ensure_nginx_points_to_current
-    fi
+    mv -Tf "${CURRENT_LINK}.next" "$CURRENT_LINK"
+    ACTIVATED=true
+    ensure_nginx_points_to_current
     restart_runtime
 }
 
@@ -356,10 +398,11 @@ verify_candidate() {
 }
 
 cleanup_releases() {
-    local active previous item index=0 real
+    local active previous entry item index=0 real
     active="$(readlink -f "$CURRENT_LINK")"
     previous="$PREVIOUS_RELEASE"
-    while IFS= read -r item; do
+    while IFS= read -r -d '' entry; do
+        item="${entry#*:}"
         index=$((index + 1))
         [ "$index" -le "$RELEASE_KEEP" ] && continue
         real="$(readlink -f "$item")"
@@ -372,7 +415,7 @@ cleanup_releases() {
         fi
         rm -rf -- "$real"
         printf 'Release lama dibersihkan: %s\n' "$(basename "$real")"
-    done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk '{print $2}')
+    done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@:%p\0' | sort -z -rn)
 }
 
 for command in git tar rsync curl "$PHP_BIN" "$COMPOSER_BIN" "$NPM_BIN" sudo; do

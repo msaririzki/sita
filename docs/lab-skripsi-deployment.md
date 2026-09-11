@@ -380,6 +380,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi pada commit `487c1d2`:** release `20260911T082956Z-487c1d231781` lulus seluruh gate internal, `/up` HTTP `200`, service aktif, WebSocket `101`, Security Gate nol kegagalan dengan satu peringatan HSTS HTTP. Release lama yang tidak lagi diperlukan dibersihkan setelah kandidat dinyatakan siap.
 - **Makna skripsi:** batas transaksi deployment harus mencakup seluruh kondisi yang dipakai untuk menyatakan release siap. Jika tidak, mekanisme rollback hanya melindungi sebagian dari keputusan pascadeploy.
 
+### E-42 - Audit penguatan atomic runner sebelum pengujian ulang
+
+- **Temuan audit:** runtime `.sita-release/` sebelumnya terbaca sebagai file lokal tak dikenal oleh Git, sehingga status konsol dapat menimbulkan kesan ada perubahan source. Selain itu, runner belum memvalidasi nilai retensi release, bentuk domain, dan bentuk symlink aktif secara eksplisit. Jalur pembersihan release juga memisahkan timestamp dan path berdasarkan spasi.
+- **Perbaikan:** runtime release diabaikan Git. Runner sekarang menolak domain tidak valid, nilai `RELEASE_KEEP` selain bilangan positif, serta `CURRENT_LINK` yang sudah ada tetapi bukan symlink. Pembersihan release memakai pemisah NUL agar tetap benar bila path memuat spasi. Jika `git pull` membawa perubahan pada skrip atomic atau gate yang dipakainya, runner melakukan re-exec satu kali dan melanjutkan dengan versi skrip terbaru sebelum candidate dibuat.
+- **Artefak uji lama:** migration probe yang tersisa di control checkout diverifikasi berstatus `Pending`, sehingga belum mengubah skema database. File probe dapat dihapus secara terarah tanpa melakukan rollback atau mengubah tabel SITA. File lokal aaPanel `.htaccess` dan `.user.ini` dipertahankan.
+- **Makna skripsi:** pengujian deployment tidak hanya memeriksa apakah aplikasi hidup. Audit juga perlu menilai ketahanan tooling terhadap konfigurasi operator dan artefak eksperimen agar status yang disajikan tidak menyesatkan.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
