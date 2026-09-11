@@ -287,6 +287,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Perbaikan:** pemeriksaan service kini menunggu secara terbatas, default maksimal sepuluh kali dengan interval satu detik. Service baru dinyatakan gagal bila tetap tidak aktif setelah seluruh percobaan. Batas waktu ini menghindari false positive tanpa menyembunyikan kegagalan yang menetap.
 - **Makna skripsi:** validasi pascadeploy perlu membedakan transisi service yang diharapkan dari kegagalan runtime. Metrik evaluasi harus mencatat waktu readiness service, bukan hanya status pada satu titik waktu.
 
+### E-30 - Validasi akhir runner rilis satu-perintah
+
+- **Eksekusi:** `bash deploy/aapanel-release.sh release` dijalankan dari VM aaPanel menggunakan profile lokal tanpa rahasia. Nilai `RUN_MIGRATIONS=false`, sehingga validasi tidak mengubah struktur database.
+- **Urutan lulus:** sinkronisasi GUI/runtime, doctor, update source, Composer sementara terverifikasi, `npm ci`, build Vite, cache Laravel, restart runtime, healthcheck, Integration Gate, sinkronisasi pascadeploy, dan Security Gate.
+- **Hasil akhir:** semua pemeriksaan integrasi lulus, termasuk PHP-FPM, Reverb, queue setelah readiness wait, scheduler, storage publik, dan WebSocket upgrade. Security Gate menghasilkan nol kegagalan dan satu peringatan HSTS karena endpoint lab masih HTTP. Halaman utama, login, dan `/up` dikonfirmasi HTTP `200` setelah release.
+- **Artefak:** runner menyimpan transcript bertimestamp di `storage/logs/deployment/`; profile server dipisahkan dari repository dan tidak berisi rahasia aplikasi.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
