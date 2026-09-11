@@ -4,7 +4,8 @@
 # Jalankan dari root proyek. Nilai .env tidak pernah dicetak.
 set -Eeuo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="${APP_DIR:-$SCRIPT_ROOT}"
 cd "$PROJECT_ROOT"
 
 PROFILE="${SECURITY_GATE_PROFILE:-production}"

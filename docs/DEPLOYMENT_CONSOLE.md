@@ -39,6 +39,8 @@ Urutan normal:
 3. Pada server baru, pilih `Siapkan server baru` untuk deploy awal dan mengaktifkan service runtime.
 4. Pada update rutin, pilih `Release update aplikasi`. Bila ada migration tertunda, konsol menampilkan daftar, meminta `Y`, membuat serta memverifikasi backup MySQL/MariaDB otomatis, kemudian menjalankan migration.
 
+Jika profile memakai `DEPLOYMENT_STRATEGY=atomic`, update tanpa migration dibangun sebagai candidate release. Setelah gate pascaaktivasi gagal, konsol mengembalikan symlink `current` ke release sebelumnya. Migration tertunda diblokir pada mode ini agar rollback kode tidak memberi rasa aman palsu terhadap perubahan skema database.
+
 Perintah langsung:
 
 ```bash

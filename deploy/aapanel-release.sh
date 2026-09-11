@@ -41,6 +41,11 @@ PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 MIGRATION_MODE="${MIGRATION_MODE:-prompt}"
 DB_BACKUP_DIR="${DB_BACKUP_DIR:-/var/backups/sita}"
+DEPLOYMENT_STRATEGY="${DEPLOYMENT_STRATEGY:-in-place}"
+RELEASE_ROOT="${RELEASE_ROOT:-${APP_DIR}/.sita-release}"
+CURRENT_LINK="${CURRENT_LINK:-${RELEASE_ROOT}/current}"
+MANAGE_NGINX_ROOT="${MANAGE_NGINX_ROOT:-prompt}"
+RELEASE_KEEP="${RELEASE_KEEP:-3}"
 RUN_DEPENDENCY_AUDIT="${RUN_DEPENDENCY_AUDIT:-false}"
 DEPENDENCY_AUDIT_MODE="${DEPENDENCY_AUDIT_MODE:-report}"
 DEPENDENCY_AUDIT_THRESHOLD="${DEPENDENCY_AUDIT_THRESHOLD:-high}"
@@ -54,6 +59,22 @@ if [ "$APP_DIR" != "$PROJECT_ROOT" ]; then
     printf 'APP_DIR profile (%s) harus sama dengan lokasi runner (%s).\n' "$APP_DIR" "$PROJECT_ROOT" >&2
     exit 2
 fi
+
+case "$DEPLOYMENT_STRATEGY" in
+    in-place|atomic) ;;
+    *)
+        printf 'DEPLOYMENT_STRATEGY harus in-place atau atomic.\n' >&2
+        exit 2
+        ;;
+esac
+
+active_app_dir() {
+    if [ "$DEPLOYMENT_STRATEGY" = 'atomic' ] && [ -f "$CURRENT_LINK/artisan" ]; then
+        printf '%s' "$CURRENT_LINK"
+    else
+        printf '%s' "$APP_DIR"
+    fi
+}
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     cyan='\033[36m'
@@ -107,7 +128,7 @@ run_privileged() {
 sync_environment() {
     run_privileged env \
         DOMAIN="$DOMAIN" \
-        APP_DIR="$APP_DIR" \
+        APP_DIR="$(active_app_dir)" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         PHP_FPM_SOCKET="$PHP_FPM_SOCKET" \
@@ -118,6 +139,7 @@ sync_environment() {
 
 doctor_environment() {
     DOMAIN="$DOMAIN" \
+        APP_DIR="$(active_app_dir)" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
@@ -126,6 +148,23 @@ doctor_environment() {
 }
 
 deploy_application() {
+    if [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
+        APP_DIR="$APP_DIR" \
+            DOMAIN="$DOMAIN" \
+            PHP_BIN="$PHP_BIN" \
+            PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
+            PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+            PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+            HEALTHCHECK_URL="$HEALTHCHECK_URL" \
+            NGINX_CONFIG="$NGINX_CONFIG" \
+            RELEASE_ROOT="$RELEASE_ROOT" \
+            CURRENT_LINK="$CURRENT_LINK" \
+            MANAGE_NGINX_ROOT="$MANAGE_NGINX_ROOT" \
+            RELEASE_KEEP="$RELEASE_KEEP" \
+            bash deploy/aapanel-atomic-release.sh
+        return
+    fi
+
     DOMAIN="$DOMAIN" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
@@ -149,6 +188,7 @@ deploy_application() {
 
 security_gate() {
     run_privileged env \
+        APP_DIR="$(active_app_dir)" \
         PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_DOCKER=false \
@@ -161,6 +201,8 @@ if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
     if [ "$ACTION" = 'bootstrap' ]; then
         phase '3/5' 'Deployment awal dan pemasangan service runtime' deploy_application
+    elif [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
+        phase '3/5' 'Atomic release aplikasi' deploy_application
     else
         phase '3/5' 'Deployment aplikasi' deploy_application
     fi

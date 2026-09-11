@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="${APP_DIR:-$SCRIPT_ROOT}"
 cd "$PROJECT_ROOT"
 
 PHP_BIN="${PHP_BIN:-php}"

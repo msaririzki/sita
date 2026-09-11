@@ -138,6 +138,14 @@ DB_BACKUP_DIR=/var/backups/sita
 
 # Kompatibilitas perintah lama. Tetap false; gunakan MIGRATION_MODE di atas.
 RUN_MIGRATIONS=false
+
+# Pilih in-place untuk pola lama, atau atomic untuk release + rollback kode.
+DEPLOYMENT_STRATEGY=in-place
+RELEASE_ROOT=${PROJECT_ROOT}/.sita-release
+CURRENT_LINK=${PROJECT_ROOT}/.sita-release/current
+MANAGE_NGINX_ROOT=prompt
+RELEASE_KEEP=3
+
 RUN_DEPENDENCY_AUDIT=false
 DEPENDENCY_AUDIT_MODE=report
 DEPENDENCY_AUDIT_THRESHOLD=high
@@ -227,6 +235,8 @@ show_profile() {
         printf '  HEALTHCHECK_URL=%s\n' "$(profile_value HEALTHCHECK_URL)"
         printf '  MIGRATION_MODE=%s\n' "$(profile_value MIGRATION_MODE)"
         printf '  DB_BACKUP_DIR=%s\n' "$(profile_value DB_BACKUP_DIR)"
+        printf '  DEPLOYMENT_STRATEGY=%s\n' "$(profile_value DEPLOYMENT_STRATEGY)"
+        printf '  CURRENT_LINK=%s\n' "$(profile_value CURRENT_LINK)"
         printf '  RUN_DEPENDENCY_AUDIT=%s\n' "$(profile_value RUN_DEPENDENCY_AUDIT)"
         printf '%bHanya field operasional ditampilkan; profile tidak boleh menyimpan secret.%b\n' "$dim" "$reset"
     else
@@ -335,7 +345,8 @@ show_tutorial() {
     printf '  [4] Release update aplikasi\n'
     printf '      Dipakai setiap ada pembaruan kode. Menjalankan pemeriksaan awal,\n'
     printf '      backup otomatis + migration bila terdeteksi dan Anda menekan Y,\n'
-    printf '      lalu pemeriksaan integrasi dan Security Gate.\n\n'
+    printf '      lalu pemeriksaan integrasi dan Security Gate. Mode atomic membuat\n'
+    printf '      candidate release dan mengembalikan kode bila gate pascaaktivasi gagal.\n\n'
 
     printf '%bMenu pendukung%b\n' "$bold$blue" "$reset"
     printf '  [5] Membuka 80 baris terakhir log deployment.\n'

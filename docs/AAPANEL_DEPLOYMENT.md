@@ -173,6 +173,14 @@ bash deploy/aapanel-release.sh release
 
 Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Saat `MIGRATION_MODE=prompt` yang menjadi default, migration tertunda ditampilkan sebelum maintenance mode dan operator cukup menjawab `Y`. Skrip lalu membuat dump MySQL/MariaDB terkompresi, menguji integritas gzip, menulis checksum, dan hanya setelah itu menjalankan `php artisan migrate --force`. Backup default tersimpan di `/var/backups/sita`; ubah `DB_BACKUP_DIR` pada profile bila server memakai lokasi backup lain.
 
+### Atomic release dan rollback kode
+
+Profile dapat memakai `DEPLOYMENT_STRATEGY=atomic`. Source Git tetap berada pada `APP_DIR` sebagai control checkout, sedangkan release baru dibangun di `RELEASE_ROOT/releases/<waktu>-<commit>`. File `.env` dan `storage` berada di `RELEASE_ROOT/shared`, lalu setiap release menggunakannya melalui symlink. Nginx, Reverb, queue, dan scheduler memakai `CURRENT_LINK`; pertukaran symlink itu atomik.
+
+Pada aktivasi pertama, skrip meminta konfirmasi untuk mengganti hanya baris document root vhost dari `APP_DIR/public` ke `CURRENT_LINK/public`. Konfigurasi asli disalin ke `/var/backups/sita/nginx/`, diuji dengan `nginx -t`, dan hanya kemudian di-reload. Pengaturan SSL, domain, log, PHP version, dan konfigurasi GUI aaPanel lain tetap dipertahankan.
+
+Candidate dibangun dan diperiksa sebelum symlink dipindahkan. Bila integration gate atau security gate pascaaktivasi gagal, `current` dikembalikan ke release sebelumnya dan service runtime direstart. Default `RELEASE_KEEP=3` menyimpan tiga release terbaru. Atomic rollback hanya berlaku untuk perubahan kode tanpa migration tertunda. Jika ada migration baru, release diblokir sebelum aktivasi karena rollback kode tidak menjamin skema database lama aman. Terapkan migration melalui migration gate terkontrol dan gunakan migration yang backward-compatible sebelum menjalankan atomic release.
+
 ### VM aaPanel baru dan path clone bebas
 
 Clone SITA dapat berada pada path apa pun, misalnya `/www/wwwroot/webkampus/sita`; skrip mencari root proyek dari lokasinya sendiri. Setelah clone, masuk ke folder tersebut lalu jalankan satu perintah untuk membuka menu terminal:
