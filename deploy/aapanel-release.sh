@@ -38,6 +38,9 @@ PHP_FPM_SOCKET="${PHP_FPM_SOCKET:-/tmp/php-cgi-84.sock}"
 NGINX_CONFIG="${NGINX_CONFIG:-/www/server/panel/vhost/nginx/${DOMAIN}.conf}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-https://${DOMAIN}/up}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}"
+HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-public}"
+ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
+CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 MIGRATION_MODE="${MIGRATION_MODE:-prompt}"
 DB_BACKUP_DIR="${DB_BACKUP_DIR:-/var/backups/sita}"
@@ -161,6 +164,9 @@ deploy_application() {
             CURRENT_LINK="$CURRENT_LINK" \
             MANAGE_NGINX_ROOT="$MANAGE_NGINX_ROOT" \
             RELEASE_KEEP="$RELEASE_KEEP" \
+            HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
+            ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
+            CHECK_EDGE_HTTP="$CHECK_EDGE_HTTP" \
             bash deploy/aapanel-atomic-release.sh
         return
     fi
@@ -190,6 +196,9 @@ security_gate() {
     run_privileged env \
         APP_DIR="$(active_app_dir)" \
         PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
+        HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
+        ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
+        CHECK_EDGE_HTTP="$CHECK_EDGE_HTTP" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_DOCKER=false \
         bash scripts/security-gate.sh --mode=warn --environment=aapanel

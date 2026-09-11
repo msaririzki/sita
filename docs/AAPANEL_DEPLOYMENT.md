@@ -103,6 +103,7 @@ BROADCAST_CONNECTION=reverb
 REVERB_APP_ID=sita-production
 REVERB_APP_KEY=isi_key_panjang
 REVERB_APP_SECRET=isi_secret_panjang
+REVERB_ALLOWED_ORIGINS=sita.kampus.ac.id
 REVERB_HOST=sita.kampus.ac.id
 REVERB_PORT=443
 REVERB_SCHEME=https
@@ -116,6 +117,8 @@ VITE_REVERB_HOST="${REVERB_HOST}"
 VITE_REVERB_PORT="${REVERB_PORT}"
 VITE_REVERB_SCHEME="${REVERB_SCHEME}"
 ```
+
+Untuk production gunakan `LOG_LEVEL=info` atau `LOG_LEVEL=warning`; jangan memakai `debug`. Nilai `REVERB_ALLOWED_ORIGINS` hanya hostname, dipisahkan koma bila lebih dari satu, tanpa `https://` maupun wildcard.
 
 Jangan commit `.env`.
 
@@ -189,6 +192,18 @@ Clone SITA dapat berada pada path apa pun, misalnya `/www/wwwroot/webkampus/sita
 cd /www/wwwroot/webkampus/sita
 bash deploy/sita.sh
 ```
+
+### Cloudflare/WAF dan pemeriksaan origin
+
+Jika Cloudflare atau WAF menampilkan bot verification kepada `curl`, jangan menonaktifkan proteksi untuk membuat gate lulus. Pada profile aaPanel gunakan probe origin berikut. Gate akan mempertahankan hostname `sita.ubg.ac.id` dan TLS/SNI, namun mengarahkan koneksi pemeriksaan dari server ke Nginx lokal `127.0.0.1`. Jalur publik tetap dicatat sebagai observasi nonblokir.
+
+```env
+HTTP_PROBE_MODE=origin
+ORIGIN_PROBE_ADDRESS=127.0.0.1
+CHECK_EDGE_HTTP=true
+```
+
+Mode ini hanya dipakai pada server origin aaPanel dengan vhost HTTPS lokal. Docker dan server tanpa CDN/WAF tetap memakai `HTTP_PROBE_MODE=public`.
 
 Pilih **aaPanel** pada konsol utama. Menu aaPanel menyediakan pembuatan profile lokal, deploy awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
 
@@ -353,7 +368,7 @@ Simpan aturan eksplisit `/storage/` pada template. Laravel menerbitkan unggahan 
 Untuk Reverb realtime, proxy websocket ke proses lokal Reverb:
 
 ```nginx
-location ~ ^/(app|apps) {
+location ~ ^/(app|apps)(?:/|$) {
     proxy_http_version 1.1;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-Host $host;
@@ -362,8 +377,8 @@ location ~ ^/(app|apps) {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "Upgrade";
-    proxy_read_timeout 60;
-    proxy_send_timeout 60;
+    proxy_read_timeout 3600;
+    proxy_send_timeout 3600;
     proxy_pass http://127.0.0.1:8080;
 }
 ```

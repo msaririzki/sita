@@ -13,6 +13,12 @@ PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 NGINX_CONFIG="${NGINX_CONFIG:-}"
 CHECK_HTTP="${CHECK_HTTP:-true}"
 CHECK_DOCKER="${CHECK_DOCKER:-true}"
+HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-public}"
+ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
+CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
+
+HTTP_PROBE_BASE_URL=''
+HTTP_PROBE_CURL_ARGS=()
 
 failures=0
 warnings=0
@@ -44,13 +50,15 @@ require_env_value() {
 }
 
 check_production_configuration() {
-    local app_env app_debug reverb_origins
+    local app_env app_debug log_level reverb_origins
     app_env="$(env_value APP_ENV)"
     app_debug="$(env_value APP_DEBUG)"
+    log_level="$(env_value LOG_LEVEL)"
     reverb_origins="$(env_value REVERB_ALLOWED_ORIGINS)"
 
     if [[ "$PROFILE" = "production" && "$app_env" != "production" ]]; then fail "APP_ENV harus production pada profile production."; else pass "APP_ENV sesuai profile $PROFILE."; fi
     if [[ "$PROFILE" = "production" && "$app_debug" != "false" ]]; then fail "APP_DEBUG harus false pada profile production."; else pass "APP_DEBUG aman untuk profile $PROFILE."; fi
+    if [[ "$PROFILE" = "production" && "${log_level,,}" = "debug" ]]; then fail "LOG_LEVEL tidak boleh debug pada profile production. Gunakan info atau warning."; else pass "LOG_LEVEL aman untuk profile $PROFILE."; fi
 
     require_env_value APP_KEY
     require_env_value REVERB_APP_KEY
@@ -95,15 +103,76 @@ check_compiled_assets() {
     warn "public/build belum ada dan container aplikasi tidak dapat diperiksa."
 }
 
-http_status() { curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "$1" 2>/dev/null || true; }
+configure_http_probe() {
+    local authority host port
+
+    if [[ "$CHECK_HTTP" != "true" ]]; then
+        return
+    fi
+    if [[ -z "$PUBLIC_BASE_URL" ]]; then
+        fail "PUBLIC_BASE_URL wajib diisi agar endpoint HTTP dapat diperiksa."
+        return
+    fi
+
+    HTTP_PROBE_BASE_URL="${PUBLIC_BASE_URL%/}"
+    case "$HTTP_PROBE_MODE" in
+        public)
+            pass "Probe HTTP memakai jalur publik."
+            ;;
+        origin)
+            if [[ "$HTTP_PROBE_BASE_URL" != https://* ]]; then
+                fail "HTTP_PROBE_MODE=origin membutuhkan PUBLIC_BASE_URL HTTPS agar hostname dan TLS tetap tervalidasi."
+                return
+            fi
+            authority="${HTTP_PROBE_BASE_URL#https://}"
+            authority="${authority%%/*}"
+            host="${authority%%:*}"
+            port=443
+            if [[ "$authority" = *:* ]]; then
+                port="${authority##*:}"
+            fi
+            if [[ ! "$host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || [[ -z "$ORIGIN_PROBE_ADDRESS" ]]; then
+                fail "Hostname, port, atau ORIGIN_PROBE_ADDRESS untuk probe origin tidak valid."
+                return
+            fi
+            HTTP_PROBE_CURL_ARGS=(--resolve "${host}:${port}:${ORIGIN_PROBE_ADDRESS}")
+            pass "Probe HTTP memakai origin ${ORIGIN_PROBE_ADDRESS} dengan hostname TLS ${host}."
+            ;;
+        *)
+            fail "HTTP_PROBE_MODE harus public atau origin."
+            ;;
+    esac
+}
+
+http_status() { curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "${HTTP_PROBE_CURL_ARGS[@]}" "$1" 2>/dev/null || true; }
+
+http_headers() { curl -ksS -D - -o /dev/null --max-time 10 "${HTTP_PROBE_CURL_ARGS[@]}" "$1" 2>/dev/null || true; }
+
+check_edge_http() {
+    local headers server status
+    if [[ "$CHECK_EDGE_HTTP" != "true" || "$CHECK_HTTP" != "true" || -z "$PUBLIC_BASE_URL" || "$HTTP_PROBE_MODE" != "origin" ]]; then
+        return
+    fi
+    headers="$(curl -ksS -D - -o /dev/null -w '\n%{http_code}' --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
+    status="${headers##*$'\n'}"
+    server="$(header_value "$headers" 'Server')"
+    if [[ "$status" = '403' && "${server,,}" = *cloudflare* ]]; then
+        warn "Cloudflare/WAF menampilkan verifikasi bot pada jalur publik; pemeriksaan aplikasi dilakukan melalui origin lokal."
+    elif [[ "$status" = '200' ]]; then
+        pass "Jalur publik dapat mengakses health endpoint (HTTP 200)."
+    elif [[ "$status" =~ ^[0-9]{3}$ ]]; then
+        warn "Jalur publik menghasilkan HTTP $status; periksa aturan Cloudflare/WAF tanpa melemahkan proteksinya."
+    else
+        warn "Jalur publik tidak dapat diperiksa."
+    fi
+}
 
 check_public_exposure() {
     local path status
     if [[ "$CHECK_HTTP" != "true" ]]; then warn "Pemeriksaan HTTP dinonaktifkan."; return; fi
-    if [[ -z "$PUBLIC_BASE_URL" ]]; then fail "PUBLIC_BASE_URL wajib diisi agar endpoint publik dapat diperiksa."; return; fi
-    PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
+    if [[ -z "$HTTP_PROBE_BASE_URL" ]]; then return; fi
     for path in '/.env' '/.git/HEAD' '/composer.lock'; do
-        status="$(http_status "${PUBLIC_BASE_URL}${path}")"
+        status="$(http_status "${HTTP_PROBE_BASE_URL}${path}")"
         if [[ ! "$status" =~ ^[0-9]{3}$ ]]; then fail "Endpoint sensitif $path tidak dapat diperiksa.";
         elif (( status >= 200 && status < 400 )); then fail "Endpoint sensitif $path terbuka (HTTP $status).";
         else pass "Endpoint sensitif $path tidak terbuka (HTTP $status)."; fi
@@ -119,14 +188,14 @@ header_value() {
 
 check_security_headers() {
     local headers value
-    if [[ "$CHECK_HTTP" != "true" || -z "$PUBLIC_BASE_URL" ]]; then return; fi
-    headers="$(curl -ksS -D - -o /dev/null --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
+    if [[ "$CHECK_HTTP" != "true" || -z "$HTTP_PROBE_BASE_URL" ]]; then return; fi
+    headers="$(http_headers "${HTTP_PROBE_BASE_URL}/up")"
     if [[ -z "$headers" ]]; then fail "Header keamanan tidak dapat diperiksa pada endpoint /up."; return; fi
     value="$(header_value "$headers" 'X-Content-Type-Options')"; [[ "${value,,}" = "nosniff" ]] && pass "X-Content-Type-Options: nosniff aktif." || fail "Header X-Content-Type-Options: nosniff belum aktif."
     value="$(header_value "$headers" 'X-Frame-Options')"; [[ "${value^^}" = "SAMEORIGIN" || "${value^^}" = "DENY" ]] && pass "X-Frame-Options aktif." || fail "Header X-Frame-Options belum aktif."
     value="$(header_value "$headers" 'Referrer-Policy')"; [[ -n "$value" ]] && pass "Referrer-Policy aktif." || fail "Header Referrer-Policy belum aktif."
     value="$(header_value "$headers" 'Permissions-Policy')"; [[ -n "$value" ]] && pass "Permissions-Policy aktif." || fail "Header Permissions-Policy belum aktif."
-    if [[ "$PUBLIC_BASE_URL" = https://* ]]; then
+    if [[ "$HTTP_PROBE_BASE_URL" = https://* ]]; then
         value="$(header_value "$headers" 'Strict-Transport-Security')"; [[ -n "$value" ]] && pass "Strict-Transport-Security aktif pada HTTPS." || fail "Header Strict-Transport-Security belum aktif pada HTTPS."
     else
         warn "HSTS belum diperiksa karena PUBLIC_BASE_URL tidak memakai HTTPS."
@@ -138,11 +207,20 @@ check_nginx_configuration() {
     if [[ -z "$config" && -f deploy/aapanel-nginx.conf ]]; then config='deploy/aapanel-nginx.conf'; fi
     if [[ ! -f "$config" ]]; then warn "Konfigurasi Nginx tidak tersedia untuk pemeriksaan statis."; return; fi
     grep -Eq 'root[[:space:]]+[^;]*/public;' "$config" && pass "Nginx document root mengarah ke public." || fail "Nginx document root harus mengarah ke public/."
-    grep -Fq 'location ~ /\.(?!well-known).* {' "$config" && pass "Nginx memiliki aturan deny dot-file." || fail "Nginx belum memiliki aturan deny dot-file."
+    if grep -Fq 'location ~ /\.(?!well-known).* {' "$config" || grep -Fq 'location ~ ^/(\.user.ini|\.htaccess|\.git|\.env' "$config"; then
+        pass "Nginx memiliki aturan deny file sensitif/dot-file."
+    else
+        fail "Nginx belum memiliki aturan deny file sensitif/dot-file."
+    fi
     grep -Eq 'add_header[[:space:]]+X-Content-Type-Options[[:space:]]+"?nosniff"?' "$config" && pass "Template Nginx memiliki X-Content-Type-Options." || fail "Template Nginx belum memiliki X-Content-Type-Options."
     grep -Eq 'add_header[[:space:]]+X-Frame-Options[[:space:]]+"?(SAMEORIGIN|DENY)"?' "$config" && pass "Template Nginx memiliki X-Frame-Options." || fail "Template Nginx belum memiliki X-Frame-Options."
     grep -Eq 'add_header[[:space:]]+Referrer-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Referrer-Policy." || fail "Template Nginx belum memiliki Referrer-Policy."
     grep -Eq 'add_header[[:space:]]+Permissions-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Permissions-Policy." || fail "Template Nginx belum memiliki Permissions-Policy."
+    if grep -Eq '^[[:space:]]*listen[[:space:]]+443' "$config"; then
+        grep -Eq 'add_header[[:space:]]+Strict-Transport-Security[[:space:]]+.*always' "$config" && pass "Template Nginx HTTPS memiliki HSTS dengan always." || fail "Template Nginx HTTPS harus memiliki Strict-Transport-Security dengan always."
+    fi
+    grep -Fq 'location ~ ^/(app|apps)(?:/|$) {' "$config" && pass "Route proxy Reverb dibatasi pada /app dan /apps." || warn "Route proxy Reverb belum memakai batas path yang presisi."
+    grep -Eq 'proxy_read_timeout[[:space:]]+(3[0-9]{2,}|[4-9][0-9]{2,}|[1-9][0-9]{3,})' "$config" && pass "Timeout baca WebSocket memadai." || warn "Timeout baca WebSocket kurang dari 300 detik."
     grep -Eq 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|reverb:)' "$config" && pass "Proxy Reverb menuju backend internal." || warn "Proxy Reverb tidak dapat dipastikan menuju backend internal."
 }
 
@@ -159,6 +237,8 @@ printf 'Security Gate SITA | profile=%s\n' "$PROFILE"
 check_production_configuration
 check_env_permission
 check_compiled_assets
+configure_http_probe
+check_edge_http
 check_public_exposure
 check_security_headers
 check_nginx_configuration

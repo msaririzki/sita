@@ -401,6 +401,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **PHP runtime:** Composer global aaPanel terlalu lama untuk menyediakan perintah `audit` dan menampilkan deprecation pada PHP 8.4. Sebagai pengganti tanpa mengubah Composer global, Composer sementara diunduh bersama checksum resmi, checksum diverifikasi, lalu `composer audit --no-dev --format=json` dijalankan pada release aktif. Hasilnya `0` advisory produksi.
 - **Makna skripsi:** audit dependency perlu membedakan alat build dari dependency yang benar-benar dibawa aplikasi production. Keterbatasan Composer global juga membuktikan nilai runner yang dapat memakai tooling sementara terverifikasi tanpa memodifikasi runtime aaPanel bersama.
 
+### E-45 - Adaptasi gate untuk HTTPS Cloudflare/WAF kampus
+
+- **Temuan konfigurasi kampus:** vhost `sita.ubg.ac.id` sudah memakai TLS, HTTP/2/3, dan proxy Reverb lokal, tetapi request otomatis dari luar menerima halaman verifikasi bot Cloudflare. Jalur ini tidak boleh dianggap sebagai kegagalan aplikasi maupun alasan untuk menonaktifkan WAF.
+- **Perbaikan rancang bangun:** Security Gate menerima `HTTP_PROBE_MODE=origin` dan `ORIGIN_PROBE_ADDRESS=127.0.0.1`. Pada mode ini `curl --resolve` mempertahankan hostname HTTPS dan TLS/SNI publik tetapi menguji vhost Nginx melalui loopback. Opsi `CHECK_EDGE_HTTP=true` mencatat status jalur publik sebagai observasi; `403` dari Cloudflare menjadi peringatan informatif, sedangkan pemeriksaan endpoint sensitif dan header dilakukan terhadap origin terverifikasi.
+- **Penguatan vhost:** template kini membatasi regex Reverb pada `/app` dan `/apps` secara tepat, memakai timeout WebSocket 3600 detik, dan mewajibkan HSTS `always` untuk vhost yang mendengar HTTPS. Konfigurasi production juga divalidasi agar `LOG_LEVEL` bukan `debug` dan origin Reverb eksplisit.
+- **Makna skripsi:** kontrol deployment perlu memahami perbedaan CDN edge dan origin. Pendekatan ini mempertahankan WAF sekaligus menghasilkan bukti objektif bahwa konfigurasi Nginx dan aplikasi di origin tetap aman dan berfungsi.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.

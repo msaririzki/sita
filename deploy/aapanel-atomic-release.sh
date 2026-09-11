@@ -25,6 +25,9 @@ RELEASE_KEEP="${RELEASE_KEEP:-3}"
 MANAGE_NGINX_ROOT="${MANAGE_NGINX_ROOT:-prompt}"
 RELEASE_MIGRATION_POLICY="${RELEASE_MIGRATION_POLICY:-block}"
 ATOMIC_REEXECUTED="${AAPANEL_ATOMIC_REEXECUTED:-false}"
+HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-public}"
+ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
+CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
 
 if [ ! -d "$CONTROL_DIR/.git" ]; then
     printf 'Atomic release membutuhkan checkout Git pada APP_DIR: %s\n' "$CONTROL_DIR" >&2
@@ -249,6 +252,9 @@ create_candidate() {
             RELEASE_KEEP="$RELEASE_KEEP" \
             MANAGE_NGINX_ROOT="$MANAGE_NGINX_ROOT" \
             RELEASE_MIGRATION_POLICY="$RELEASE_MIGRATION_POLICY" \
+            HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
+            ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
+            CHECK_EDGE_HTTP="$CHECK_EDGE_HTTP" \
             bash "$CONTROL_DIR/deploy/aapanel-atomic-release.sh"
     fi
 
@@ -392,6 +398,9 @@ verify_candidate() {
     run_privileged env \
         APP_DIR="$CURRENT_LINK" \
         PUBLIC_BASE_URL="${HEALTHCHECK_URL%/up}" \
+        HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
+        ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
+        CHECK_EDGE_HTTP="$CHECK_EDGE_HTTP" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_DOCKER=false \
         bash "$SCRIPT_ROOT/scripts/security-gate.sh" --mode=warn --environment=aapanel
