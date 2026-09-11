@@ -55,17 +55,35 @@ workspace_status() {
     if [ -d "$PROJECT_ROOT/.git" ]; then
         status_label 'Repository' 'TERDETEKSI' "$green"
 
-        local branch working_tree
+        local branch working_tree line tracked_changes unknown_files panel_local_files
         branch="$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || true)"
         if [ -n "$branch" ]; then
             status_label 'Git branch' "$branch" "$cyan"
         fi
 
         working_tree="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null || true)"
-        if [ -z "$working_tree" ]; then
-            status_label 'Working tree' 'BERSIH' "$green"
+        tracked_changes=0
+        unknown_files=0
+        panel_local_files=0
+        if [ -n "$working_tree" ]; then
+            while IFS= read -r line; do
+                case "$line" in
+                    '?? .htaccess'|'?? .user.ini') panel_local_files=$((panel_local_files + 1)) ;;
+                    '?? '*) unknown_files=$((unknown_files + 1)) ;;
+                    *) tracked_changes=$((tracked_changes + 1)) ;;
+                esac
+            done <<< "$working_tree"
+        fi
+
+        if [ "$tracked_changes" -gt 0 ]; then
+            status_label 'Working tree' "PERUBAHAN GIT (${tracked_changes})" "$yellow"
+        elif [ "$unknown_files" -gt 0 ]; then
+            status_label 'Working tree' "FILE LOKAL BARU (${unknown_files})" "$yellow"
+        elif [ "$panel_local_files" -gt 0 ]; then
+            status_label 'Working tree' 'HANYA FILE PANEL LOKAL' "$green"
+            status_label 'File aaPanel lokal' "TERDETEKSI (${panel_local_files})" "$cyan"
         else
-            status_label 'Working tree' 'ADA PERUBAHAN LOKAL' "$yellow"
+            status_label 'Working tree' 'BERSIH' "$green"
         fi
     else
         status_label 'Repository' 'TIDAK TERDETEKSI' "$yellow"
