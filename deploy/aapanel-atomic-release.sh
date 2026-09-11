@@ -339,7 +339,8 @@ verify_candidate() {
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         bash "$SCRIPT_ROOT/deploy/aapanel-integration-gate.sh"
-    APP_DIR="$CURRENT_LINK" \
+    run_privileged env \
+        APP_DIR="$CURRENT_LINK" \
         PUBLIC_BASE_URL="${HEALTHCHECK_URL%/up}" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_DOCKER=false \

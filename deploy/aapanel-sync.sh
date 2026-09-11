@@ -219,7 +219,7 @@ else
 fi
 
 if [ -f "$APP_DIR/.env" ]; then
-    env_mode="$(stat -c '%a' "$APP_DIR/.env" 2>/dev/null || true)"
+    env_mode="$(stat -Lc '%a' "$APP_DIR/.env" 2>/dev/null || true)"
     if [ -n "$env_mode" ] && [ $((8#$env_mode & 7)) -eq 0 ]; then
         ok ".env tidak dapat dibaca pengguna lain (mode ${env_mode})"
     else

@@ -66,7 +66,9 @@ check_production_configuration() {
 check_env_permission() {
     local mode other group
     if ! command -v stat >/dev/null 2>&1; then warn "stat tidak tersedia; permission .env tidak diperiksa."; return; fi
-    mode="$(stat -c '%a' .env 2>/dev/null || true)"
+    # Atomic releases expose shared .env through a symlink. Inspect the target
+    # file permission, not the conventional 777 mode of the symlink itself.
+    mode="$(stat -Lc '%a' .env 2>/dev/null || true)"
     if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]]; then warn "Mode .env tidak dapat dibaca; permission tidak diperiksa."; return; fi
     mode="${mode: -3}"; group="${mode:1:1}"; other="${mode:2:1}"
     if (( other != 0 )); then fail ".env dapat diakses oleh pengguna lain (mode $mode). Gunakan paling ketat 640."; else pass ".env tidak dapat diakses oleh pengguna lain (mode $mode)."; fi
