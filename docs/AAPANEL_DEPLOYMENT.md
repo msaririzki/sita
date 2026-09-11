@@ -132,6 +132,23 @@ Sesudah situs dibuat, buka tombol **Conf** pada entri tersebut dan terapkan konf
 
 Deployment berikutnya cukup dijalankan dari terminal aaPanel. Ia memperbarui source, dependency, asset, cache Laravel, migrasi bila `RUN_MIGRATIONS=true`, dan layanan runtime; entri website aaPanel tidak berubah. Karena itu, database aplikasi hanya dapat berubah ketika migrasi dijalankan, bukan karena registrasi situs pada GUI.
 
+### Batas aman antara GUI dan otomatisasi
+
+Gunakan GUI aaPanel hanya untuk komponen server yang memang dikelola aaPanel: membuat website, memasang Nginx dan PHP 8.4, mengaktifkan extension PHP, membuat database/user, menerbitkan SSL, dan membaca log. Extension harus dipasang melalui **App Store > PHP 8.4 > Install extensions**. Jangan memakai skrip yang memanipulasi database internal aaPanel atau memasang extension melalui API internal yang tidak terdokumentasi; versi panel dan build PHP dapat berubah.
+
+Gunakan terminal hanya untuk proses yang dapat diulang dari repository: precheck, deployment source, Composer/NPM build, cache, migrasi yang disetujui, service Reverb/queue/scheduler, serta gate keamanan. Sebelum deploy pertama dan setelah perubahan konfigurasi server, jalankan pemeriksaan sinkronisasi berikut. Skrip ini hanya membaca kondisi server; ia tidak mengubah database aaPanel, SSL, atau vhost.
+
+```bash
+sudo env DOMAIN=sita.kampus.ac.id \
+APP_DIR=/www/wwwroot/sita.kampus.ac.id \
+PHP_BIN=/www/server/php/84/bin/php \
+PHP_FPM_RUNTIME_USER=www \
+NGINX_CONFIG=/www/server/panel/vhost/nginx/sita.kampus.ac.id.conf \
+bash deploy/aapanel-sync.sh
+```
+
+Sebelum menyalin template Nginx, ganti `DOMAIN`, `PROJECT_ROOT`, dan `PHP_FPM_SOCKET`; untuk PHP 8.4 aaPanel, nilai socket biasanya `/tmp/php-cgi-84.sock`. Setelah perubahan lewat tombol **Conf**, uji `nginx -t`, reload Nginx, lalu jalankan kembali `aapanel-sync.sh` dan integration gate.
+
 ## Precheck Server
 
 Jalankan:
