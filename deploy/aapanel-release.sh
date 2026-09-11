@@ -12,7 +12,7 @@ case "$ACTION" in
     bootstrap|check|release) ;;
     *)
         printf 'Penggunaan: bash deploy/aapanel-release.sh [bootstrap|check|release]\n' >&2
-        printf '  bootstrap : deploy awal dan pemasangan service runtime satu kali\n' >&2
+        printf '  bootstrap : siapkan server baru: deploy awal dan aktifkan service runtime\n' >&2
         printf '  check   : verifikasi aaPanel tanpa mengubah aplikasi\n' >&2
         printf '  release : check, deploy, integration gate, dan security gate\n' >&2
         exit 2
@@ -163,7 +163,7 @@ if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     phase '4/5' 'Validasi sinkronisasi pascadeploy' sync_environment
     phase '5/5' 'Security gate pascadeploy' security_gate
     if [ "$ACTION" = 'bootstrap' ]; then
-        printf '%bBOOTSTRAP DINYATAKAN SIAP%b\n' "$green" "$reset"
+        printf '%bDEPLOY AWAL DINYATAKAN SIAP%b\n' "$green" "$reset"
     else
         printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
     fi

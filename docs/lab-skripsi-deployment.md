@@ -296,15 +296,15 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 
 ### E-31 - Konsol terminal interaktif untuk operator aaPanel
 
-- **Rancangan:** `deploy/sita.sh` menjadi satu perintah yang mudah diingat. Konsol menyediakan pembuatan profile lokal tanpa secret, bootstrap awal, check, release rutin, dan pembacaan log terakhir. Implementasi deployment tetap dipisah dalam skrip fokus agar dapat diaudit dan diuji.
+- **Rancangan:** `deploy/sita.sh` menjadi satu perintah yang mudah diingat. Konsol menyediakan pembuatan profile lokal tanpa secret, deploy awal server baru, check, release rutin, dan pembacaan log terakhir. Implementasi deployment tetap dipisah dalam skrip fokus agar dapat diaudit dan diuji.
 - **Portabilitas path:** root proyek dihitung dari lokasi `deploy/sita.sh`, bukan dipasang tetap pada `/www/wwwroot/sita`. Profile menyimpan `APP_DIR` yang harus sama dengan lokasi clone, sehingga instalasi seperti `/www/wwwroot/webkampus/sita` tetap memakai path yang benar untuk service, log, vhost, dan deployment.
 - **Validasi lab pada commit `8b4e2ef`:** mode noninteraktif `bash deploy/sita.sh check` lulus. Menu interaktif menampilkan tindakan operator dan membaca profile lab tanpa mengekspos `.env` atau kredensial database.
 - **Makna skripsi:** usability bukan hanya tampilan aplikasi. Konsol berfase, profile lokal, dan log bertimestamp mengurangi ketergantungan pada hafalan command tanpa menghilangkan keputusan eksplisit untuk migrasi database atau perubahan infrastruktur.
 
 ### E-32 - Panduan berfase tersedia di dalam konsol terminal
 
-- **Masalah penggunaan:** operator aaPanel yang baru pertama kali memakai otomasi perlu mengetahui batas antara konfigurasi yang tetap dilakukan melalui GUI panel dan tahap yang dapat dijalankan oleh skrip. Tanpa panduan, menu `bootstrap` dapat disalahartikan sebagai pemasangan seluruh infrastruktur dari nol.
-- **Perbaikan:** menu `Panduan dan alur penggunaan` ditambahkan ke `deploy/sita.sh`. Panduan menjelaskan prasyarat GUI aaPanel, penyusunan kode dan `.env`, urutan profile -> check -> bootstrap -> release, fungsi setiap menu, pengamanan migration serta extension PHP, dan lokasi log eksperimen.
+- **Masalah penggunaan:** operator aaPanel yang baru pertama kali memakai otomasi perlu mengetahui batas antara konfigurasi yang tetap dilakukan melalui GUI panel dan tahap yang dapat dijalankan oleh skrip. Tanpa panduan, deploy awal server dapat disalahartikan sebagai pemasangan seluruh infrastruktur dari nol.
+- **Perbaikan:** menu `Panduan dan alur penggunaan` ditambahkan ke `deploy/sita.sh`. Panduan menjelaskan prasyarat GUI aaPanel, penyusunan kode dan `.env`, urutan profile -> check -> deploy awal -> release, fungsi setiap menu, pengamanan migration serta extension PHP, dan lokasi log eksperimen.
 - **Umpan balik status:** halaman awal konsol menampilkan status profile lokal, keberadaan `.env`, dan repository untuk membantu operator mengenali kesiapan dasar tanpa membaca secret.
 - **Validasi lab pada commit `edb6039`:** syntax Bash lulus dan menu panduan diuji melalui sesi noninteraktif. Tampilan warna dipakai hanya ketika terminal mendukung TTY; output tetap terbaca pada terminal tanpa warna atau saat dicatat ke log.
 - **Makna skripsi:** desain interaksi terminal dapat menjadi bagian dari artefak rancang bangun. Konsol menjembatani pengelolaan GUI aaPanel dan gate berbasis CLI, sambil mempertahankan langkah yang perlu keputusan operator.
@@ -312,7 +312,7 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 ### E-33 - Konsol kembali ke menu setelah pemeriksaan berhasil
 
 - **Masalah penggunaan:** implementasi awal menjalankan runner dengan `exec`. Setelah menu `Check` selesai, proses konsol berakhir dan operator harus menjalankan `bash deploy/sita.sh` lagi untuk memilih `Release`.
-- **Perbaikan:** runner sekarang dipanggil sebagai proses anak. Setelah aksi berhasil, konsol menampilkan langkah lanjutan yang sesuai dan kembali ke menu. Aksi `Check` mengarahkan operator ke `Release` untuk update rutin atau `Bootstrap` untuk server baru.
+- **Perbaikan:** runner sekarang dipanggil sebagai proses anak. Setelah aksi berhasil, konsol menampilkan langkah lanjutan yang sesuai dan kembali ke menu. Aksi `Check` mengarahkan operator ke `Release` untuk update rutin atau `Siapkan server baru` untuk server baru.
 - **Validasi lab pada commit `d0f8811`:** siklus menu `Check` dijalankan pada VM aaPanel. Sinkronisasi GUI/runtime dan doctor lulus; konsol menampilkan status siap, arahan `Release`, lalu kembali memperlihatkan menu tanpa perlu menjalankan ulang perintah.
 - **Makna skripsi:** temuan ini menunjukkan bahwa hasil pemeriksaan harus dihubungkan dengan keputusan operasi berikutnya. Konsol tidak hanya menghasilkan status teknis, tetapi menjaga alur deployment agar operator tidak kehilangan konteks.
 
@@ -329,6 +329,12 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Perbaikan:** menu status menghitung baris peringatan pada log tindakan terbaru dan menampilkannya secara eksplisit dengan arahan ke menu log lengkap.
 - **Validasi lab pada commit `285b663`:** status VM menampilkan dua peringatan dari pemeriksaan terakhir: Composer global belum memenuhi runtime API sehingga runner memakai Composer sementara terverifikasi, dan port Reverb `80` sesuai lab HTTP tetapi perlu disesuaikan menjadi `443` saat reverse proxy HTTPS dipakai. Health endpoint dan seluruh service tetap aktif.
 - **Makna skripsi:** hasil evaluasi perlu mengklasifikasikan gagal, lulus, dan lulus dengan peringatan. Klasifikasi ini membantu pengukuran false positive serta keputusan perbaikan tanpa mengubah peringatan menjadi kegagalan semu.
+
+### E-36 - Istilah operasi disederhanakan untuk operator aaPanel
+
+- **Masalah penggunaan:** istilah teknis `Bootstrap server baru` tidak langsung menjelaskan tindakan yang akan dilakukan kepada operator nonpengembang.
+- **Perbaikan:** antarmuka konsol memakai istilah `Siapkan server baru (deploy awal)` dan hasilnya memakai `DEPLOY AWAL DINYATAKAN SIAP`. Nama perintah internal `bootstrap` tetap dipertahankan untuk kompatibilitas skrip noninteraktif.
+- **Makna skripsi:** istilah antarmuka perlu menyatakan tujuan kerja pengguna, sedangkan detail implementasi dapat tetap berada pada lapisan teknis.
 
 ## Catatan untuk Sinopsis
 

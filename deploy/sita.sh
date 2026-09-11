@@ -159,10 +159,10 @@ show_action_result() {
         check)
             printf '\n%b%s%b\n' "$bold$green" 'CHECK SELESAI - SERVER SIAP UNTUK UPDATE' "$reset"
             printf 'Jika ingin memperbarui kode aplikasi sekarang, kembali ke menu lalu pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
-            printf 'Jika ini server baru, selesaikan konfigurasi GUI dan .env, lalu pilih %b[2] Bootstrap server baru%b.\n' "$cyan" "$reset"
+            printf 'Jika ini server baru, selesaikan konfigurasi GUI dan .env, lalu pilih %b[2] Siapkan server baru%b.\n' "$cyan" "$reset"
             ;;
         bootstrap)
-            printf '\n%b%s%b\n' "$bold$green" 'BOOTSTRAP SELESAI' "$reset"
+            printf '\n%b%s%b\n' "$bold$green" 'DEPLOY AWAL SELESAI' "$reset"
             printf 'Untuk pembaruan berikutnya, pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
             ;;
         release)
@@ -271,8 +271,8 @@ show_operational_status() {
     latest="$(latest_deployment_log)"
     if [ -z "$latest" ]; then
         status_label 'Deployment terakhir' 'BELUM ADA LOG' "$yellow"
-    elif grep -q 'RILIS DINYATAKAN SIAP\|BOOTSTRAP DINYATAKAN SIAP\|PEMERIKSAAN DINYATAKAN SIAP' "$latest"; then
-        log_status="$(grep -E 'RILIS DINYATAKAN SIAP|BOOTSTRAP DINYATAKAN SIAP|PEMERIKSAAN DINYATAKAN SIAP' "$latest" | tail -n 1)"
+    elif grep -q 'RILIS DINYATAKAN SIAP\|DEPLOY AWAL DINYATAKAN SIAP\|BOOTSTRAP DINYATAKAN SIAP\|PEMERIKSAAN DINYATAKAN SIAP' "$latest"; then
+        log_status="$(grep -E 'RILIS DINYATAKAN SIAP|DEPLOY AWAL DINYATAKAN SIAP|BOOTSTRAP DINYATAKAN SIAP|PEMERIKSAAN DINYATAKAN SIAP' "$latest" | tail -n 1)"
         status_label 'Deployment terakhir' "$log_status" "$green"
         printf '  Log terakhir      %s\n' "$latest"
     else
@@ -323,7 +323,7 @@ show_tutorial() {
     printf '  [3] Check kesiapan server\n'
     printf '      Memeriksa sinkronisasi GUI aaPanel, PHP, extension, Nginx, .env,\n'
     printf '      permission runtime, dan service tanpa mengubah aplikasi.\n\n'
-    printf '  [2] Bootstrap server baru\n'
+    printf '  [2] Siapkan server baru (deploy awal)\n'
     printf '      Dipakai sekali untuk deploy awal setelah Check lulus. Menjalankan\n'
     printf '      deploy awal dan memasang service Reverb, queue, serta scheduler.\n\n'
     printf '  [4] Release update aplikasi\n'
@@ -368,7 +368,7 @@ while true; do
     title
     printf '\n'
     printf '  %b[1]%b  Buat profile server       %bSekali per server, tanpa secret%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[2]%b  Bootstrap server baru     %bDeploy awal dan instal service%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[2]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[3]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[4]%b  Release update aplikasi   %bDeploy update + integration/security gate%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[5]%b  Lihat log terakhir\n' "$cyan" "$reset"
