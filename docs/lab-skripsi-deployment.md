@@ -298,8 +298,16 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 
 - **Rancangan:** `deploy/sita.sh` menjadi satu perintah yang mudah diingat. Konsol menyediakan pembuatan profile lokal tanpa secret, bootstrap awal, check, release rutin, dan pembacaan log terakhir. Implementasi deployment tetap dipisah dalam skrip fokus agar dapat diaudit dan diuji.
 - **Portabilitas path:** root proyek dihitung dari lokasi `deploy/sita.sh`, bukan dipasang tetap pada `/www/wwwroot/sita`. Profile menyimpan `APP_DIR` yang harus sama dengan lokasi clone, sehingga instalasi seperti `/www/wwwroot/webkampus/sita` tetap memakai path yang benar untuk service, log, vhost, dan deployment.
-- **Validasi lab pada commit `8b4e2ef`:** mode noninteraktif `bash deploy/sita.sh check` lulus. Menu interaktif menampilkan enam tindakan operator dan membaca profile lab tanpa mengekspos `.env` atau kredensial database.
+- **Validasi lab pada commit `8b4e2ef`:** mode noninteraktif `bash deploy/sita.sh check` lulus. Menu interaktif menampilkan tindakan operator dan membaca profile lab tanpa mengekspos `.env` atau kredensial database.
 - **Makna skripsi:** usability bukan hanya tampilan aplikasi. Konsol berfase, profile lokal, dan log bertimestamp mengurangi ketergantungan pada hafalan command tanpa menghilangkan keputusan eksplisit untuk migrasi database atau perubahan infrastruktur.
+
+### E-32 - Panduan berfase tersedia di dalam konsol terminal
+
+- **Masalah penggunaan:** operator aaPanel yang baru pertama kali memakai otomasi perlu mengetahui batas antara konfigurasi yang tetap dilakukan melalui GUI panel dan tahap yang dapat dijalankan oleh skrip. Tanpa panduan, menu `bootstrap` dapat disalahartikan sebagai pemasangan seluruh infrastruktur dari nol.
+- **Perbaikan:** menu `Panduan dan alur penggunaan` ditambahkan ke `deploy/sita.sh`. Panduan menjelaskan prasyarat GUI aaPanel, penyusunan kode dan `.env`, urutan profile -> check -> bootstrap -> release, fungsi setiap menu, pengamanan migration serta extension PHP, dan lokasi log eksperimen.
+- **Umpan balik status:** halaman awal konsol menampilkan status profile lokal, keberadaan `.env`, dan repository untuk membantu operator mengenali kesiapan dasar tanpa membaca secret.
+- **Validasi lab pada commit `edb6039`:** syntax Bash lulus dan menu panduan diuji melalui sesi noninteraktif. Tampilan warna dipakai hanya ketika terminal mendukung TTY; output tetap terbaca pada terminal tanpa warna atau saat dicatat ke log.
+- **Makna skripsi:** desain interaksi terminal dapat menjadi bagian dari artefak rancang bangun. Konsol menjembatani pengelolaan GUI aaPanel dan gate berbasis CLI, sambil mempertahankan langkah yang perlu keputusan operator.
 
 ## Catatan untuk Sinopsis
 
