@@ -182,11 +182,13 @@ prepare_layout() {
         [ -f "$CONTROL_DIR/.env" ] || { printf '.env awal tidak ditemukan pada control checkout.\n' >&2; exit 1; }
         cp -p "$CONTROL_DIR/.env" "$SHARED_DIR/.env"
     fi
-    if [ ! -d "$SHARED_DIR/storage" ]; then
+    if [ ! -f "$SHARED_DIR/.sita-shared-storage-ready" ]; then
         require_command rsync
-        install -d -m 770 "$SHARED_DIR/storage"
+        run_privileged install -d -m 770 -o "$(id -un)" -g "$PHP_FPM_RUNTIME_GROUP" "$SHARED_DIR/storage"
         if [ -d "$CONTROL_DIR/storage" ]; then
-            rsync -a "$CONTROL_DIR/storage/" "$SHARED_DIR/storage/"
+            # Historical experiment artefacts can be owned by root. The
+            # initial copy is privileged, then permissions are narrowed below.
+            run_privileged rsync -a --delete "$CONTROL_DIR/storage/" "$SHARED_DIR/storage/"
         fi
     fi
 
@@ -194,6 +196,8 @@ prepare_layout() {
     run_privileged chmod 640 "$SHARED_DIR/.env"
     run_privileged chgrp -R "$PHP_FPM_RUNTIME_GROUP" "$SHARED_DIR/storage"
     run_privileged chmod -R ug+rwX "$SHARED_DIR/storage"
+    touch "$SHARED_DIR/.sita-shared-storage-ready"
+    chmod 640 "$SHARED_DIR/.sita-shared-storage-ready"
 }
 
 create_candidate() {
