@@ -336,6 +336,15 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Perbaikan:** antarmuka konsol memakai istilah `Siapkan server baru (deploy awal)` dan hasilnya memakai `DEPLOY AWAL DINYATAKAN SIAP`. Nama perintah internal `bootstrap` tetap dipertahankan untuk kompatibilitas skrip noninteraktif.
 - **Makna skripsi:** istilah antarmuka perlu menyatakan tujuan kerja pengguna, sedangkan detail implementasi dapat tetap berada pada lapisan teknis.
 
+### E-37 - Konsol deployment lintas-environment tervalidasi
+
+- **Rancangan:** `deploy/sita.sh` menjadi titik masuk utama yang meminta operator memilih Docker atau aaPanel. Konsol meneruskan tindakan ke modul environment yang terpisah: Docker memakai Compose, container, dan `docker-integration-gate.sh`; aaPanel memakai sinkronisasi GUI, PHP-FPM, serta service systemd. Perintah lama `bash deploy/sita.sh check` tetap diarahkan ke aaPanel.
+- **Profile lokal:** Docker menggunakan `deploy/docker-profile.env` yang hanya memuat URL health/public, konfigurasi Nginx Docker, serta pilihan audit dependency. Profile ini diabaikan Git dan tidak menyimpan secret Laravel. aaPanel tetap memakai profile terpisah yang sudah ada.
+- **Validasi Docker pada commit `d295357`:** profile Docker dibuat pada VM tanpa secret. Check lintas-environment lulus: konfigurasi Compose valid; enam container berjalan; db/app sehat; runtime storage, public storage, bundle Reverb, dan WebSocket `101` lulus; Security Gate menghasilkan nol kegagalan dan satu peringatan HSTS karena lab HTTP.
+- **Validasi aaPanel pada commit `d295357`:** `bash deploy/sita.sh aapanel check` meneruskan aksi ke runner aaPanel dan lulus untuk sinkronisasi GUI/runtime serta doctor. Peringatan Composer sementara dan port Reverb HTTP tetap tercatat sebagai peringatan nonblokir lab.
+- **Navigasi:** submenu dapat kembali ke pemilihan environment tanpa menutup konsol. Tidak ada release, perubahan container, vhost, database, atau server produksi selama validasi ini; Check hanya menjalankan pemeriksaan dan marker storage sementara yang dibersihkan oleh gate.
+- **Makna skripsi:** artefak yang sama memberi alur operator konsisten di dua lingkungan tanpa menyamakan implementasi infrastrukturnya. Hal ini mendukung evaluasi DevSecOps yang membandingkan keputusan gate, waktu, dan intervensi manual secara fair pada Docker maupun aaPanel.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
