@@ -173,6 +173,21 @@ bash deploy/aapanel-release.sh release
 
 Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Nilai default `RUN_MIGRATIONS=false`; ubah menjadi `true` di profile hanya setelah migration direview dan backup database tersedia.
 
+### VM aaPanel baru dan path clone bebas
+
+Clone SITA dapat berada pada path apa pun, misalnya `/www/wwwroot/webkampus/sita`; skrip mencari root proyek dari lokasinya sendiri. Setelah clone, masuk ke folder tersebut lalu jalankan satu perintah untuk membuka menu terminal:
+
+```bash
+cd /www/wwwroot/webkampus/sita
+bash deploy/sita.sh
+```
+
+Menu menyediakan pembuatan profile lokal, bootstrap awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
+
+Sebelum memilih **Bootstrap server baru**, lakukan langkah GUI aaPanel yang memang bersifat infrastruktur: install Nginx dan PHP 8.4, aktifkan extension PHP yang tersedia, buat website dengan domain/path clone, buat database serta user, dan aktifkan SSL setelah DNS siap. Jika ada extension SITA yang tidak tersedia di GUI, gunakan prosedur CLI aaPanel yang spesifik untuk versi PHP tersebut pada maintenance window, lalu jalankan menu **Check**. Jangan gunakan paket PHP Ubuntu (`apt install php-*`) karena tidak mengubah build PHP aaPanel.
+
+Bootstrap memasang unit systemd Reverb, queue, dan scheduler satu kali melalui `INSTALL_SERVICES=true`. Sebelum memulai database kosong, ubah `RUN_MIGRATIONS=true` pada profile setelah database dan backup telah diperiksa. Release rutin tidak memasang ulang unit service.
+
 ## Precheck Server
 
 Jalankan:

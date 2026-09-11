@@ -9,9 +9,10 @@ ACTION="${1:-release}"
 PROFILE_FILE="${AAPANEL_PROFILE_FILE:-${PROJECT_ROOT}/deploy/aapanel-profile.env}"
 
 case "$ACTION" in
-    check|release) ;;
+    bootstrap|check|release) ;;
     *)
-        printf 'Penggunaan: bash deploy/aapanel-release.sh [check|release]\n' >&2
+        printf 'Penggunaan: bash deploy/aapanel-release.sh [bootstrap|check|release]\n' >&2
+        printf '  bootstrap : deploy awal dan pemasangan service runtime satu kali\n' >&2
         printf '  check   : verifikasi aaPanel tanpa mengubah aplikasi\n' >&2
         printf '  release : check, deploy, integration gate, dan security gate\n' >&2
         exit 2
@@ -41,6 +42,11 @@ RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
 RUN_DEPENDENCY_AUDIT="${RUN_DEPENDENCY_AUDIT:-false}"
 DEPENDENCY_AUDIT_MODE="${DEPENDENCY_AUDIT_MODE:-report}"
 DEPENDENCY_AUDIT_THRESHOLD="${DEPENDENCY_AUDIT_THRESHOLD:-high}"
+INSTALL_SERVICES=false
+
+if [ "$ACTION" = 'bootstrap' ]; then
+    INSTALL_SERVICES=true
+fi
 
 if [ "$APP_DIR" != "$PROJECT_ROOT" ]; then
     printf 'APP_DIR profile (%s) harus sama dengan lokasi runner (%s).\n' "$APP_DIR" "$PROJECT_ROOT" >&2
@@ -128,6 +134,7 @@ deploy_application() {
         RUN_DEPENDENCY_AUDIT="$RUN_DEPENDENCY_AUDIT" \
         DEPENDENCY_AUDIT_MODE="$DEPENDENCY_AUDIT_MODE" \
         DEPENDENCY_AUDIT_THRESHOLD="$DEPENDENCY_AUDIT_THRESHOLD" \
+        INSTALL_SERVICES="$INSTALL_SERVICES" \
         RUN_INTEGRATION_GATE=true \
         CHECK_SERVICES=true \
         RUN_SECURITY_PREFLIGHT=false \
@@ -145,13 +152,21 @@ security_gate() {
 }
 
 banner
-if [ "$ACTION" = 'release' ]; then
+if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     phase '1/5' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
     phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
-    phase '3/5' 'Deployment aplikasi' deploy_application
+    if [ "$ACTION" = 'bootstrap' ]; then
+        phase '3/5' 'Deployment awal dan pemasangan service runtime' deploy_application
+    else
+        phase '3/5' 'Deployment aplikasi' deploy_application
+    fi
     phase '4/5' 'Validasi sinkronisasi pascadeploy' sync_environment
     phase '5/5' 'Security gate pascadeploy' security_gate
-    printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
+    if [ "$ACTION" = 'bootstrap' ]; then
+        printf '%bBOOTSTRAP DINYATAKAN SIAP%b\n' "$green" "$reset"
+    else
+        printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
+    fi
 else
     phase '1/2' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
     phase '2/2' 'Precheck runtime dan aplikasi' doctor_environment
