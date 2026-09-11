@@ -13,11 +13,14 @@ PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
 NGINX_CONFIG="${NGINX_CONFIG:-}"
 CHECK_HTTP="${CHECK_HTTP:-true}"
 CHECK_DOCKER="${CHECK_DOCKER:-true}"
-HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-public}"
+HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-auto}"
 ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
+ORIGIN_PROBE_HTTP_PORT="${ORIGIN_PROBE_HTTP_PORT:-80}"
 CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
 
 HTTP_PROBE_BASE_URL=''
+HTTP_PROBE_PUBLIC_BASE_URL=''
+HTTP_PROBE_EFFECTIVE_MODE=''
 HTTP_PROBE_CURL_ARGS=()
 
 failures=0
@@ -104,7 +107,7 @@ check_compiled_assets() {
 }
 
 configure_http_probe() {
-    local authority host port
+    local authority host path port scheme status
 
     if [[ "$CHECK_HTTP" != "true" ]]; then
         return
@@ -114,32 +117,113 @@ configure_http_probe() {
         return
     fi
 
-    HTTP_PROBE_BASE_URL="${PUBLIC_BASE_URL%/}"
+    HTTP_PROBE_PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
+    if [[ ! "$HTTP_PROBE_PUBLIC_BASE_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/.*)?$ ]]; then
+        fail "PUBLIC_BASE_URL harus berupa URL HTTP(S) dengan hostname dan port opsional yang valid."
+        return
+    fi
+
+    scheme="${HTTP_PROBE_PUBLIC_BASE_URL%%://*}"
+    authority="${HTTP_PROBE_PUBLIC_BASE_URL#*://}"
+    authority="${authority%%/*}"
+    path="${HTTP_PROBE_PUBLIC_BASE_URL#*://}"
+    if [[ "$path" = */* ]]; then
+        path="/${path#*/}"
+    else
+        path=''
+    fi
+    host="${authority%%:*}"
+    port=80
+    if [[ "$scheme" = 'https' ]]; then
+        port=443
+    fi
+    if [[ "$authority" = *:* ]]; then
+        port="${authority##*:}"
+    fi
+    if [[ ! "$host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( port < 1 || port > 65535 )); then
+        fail "Hostname atau port pada PUBLIC_BASE_URL tidak valid."
+        return
+    fi
+
+    configure_public_probe() {
+        HTTP_PROBE_BASE_URL="$HTTP_PROBE_PUBLIC_BASE_URL"
+        HTTP_PROBE_CURL_ARGS=()
+        HTTP_PROBE_EFFECTIVE_MODE='public'
+        pass "Probe HTTP memakai jalur publik."
+    }
+
+    configure_origin_https_probe() {
+        if [[ "$scheme" != 'https' ]]; then
+            return 1
+        fi
+        HTTP_PROBE_BASE_URL="$HTTP_PROBE_PUBLIC_BASE_URL"
+        HTTP_PROBE_CURL_ARGS=(--resolve "${host}:${port}:${ORIGIN_PROBE_ADDRESS}")
+        HTTP_PROBE_EFFECTIVE_MODE='origin-https'
+        return 0
+    }
+
+    configure_origin_http_probe() {
+        if [[ ! "$ORIGIN_PROBE_HTTP_PORT" =~ ^[0-9]{1,5}$ ]] || (( ORIGIN_PROBE_HTTP_PORT < 1 || ORIGIN_PROBE_HTTP_PORT > 65535 )); then
+            return 1
+        fi
+        HTTP_PROBE_BASE_URL="http://${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT}${path}"
+        HTTP_PROBE_CURL_ARGS=(-H "Host: ${authority}")
+        HTTP_PROBE_EFFECTIVE_MODE='origin-http'
+        return 0
+    }
+
+    origin_https_is_healthy() {
+        configure_origin_https_probe || return 1
+        status="$(http_status "${HTTP_PROBE_BASE_URL}/up")"
+        [[ "$status" =~ ^2[0-9]{2}$ ]]
+    }
+
+    origin_http_is_healthy() {
+        configure_origin_http_probe || return 1
+        status="$(http_status "${HTTP_PROBE_BASE_URL}/up")"
+        [[ "$status" =~ ^2[0-9]{2}$ ]]
+    }
+
     case "$HTTP_PROBE_MODE" in
         public)
-            pass "Probe HTTP memakai jalur publik."
+            configure_public_probe
             ;;
-        origin)
-            if [[ "$HTTP_PROBE_BASE_URL" != https://* ]]; then
-                fail "HTTP_PROBE_MODE=origin membutuhkan PUBLIC_BASE_URL HTTPS agar hostname dan TLS tetap tervalidasi."
+        origin|origin-https)
+            if [[ "$scheme" != 'https' ]] || [[ -z "$ORIGIN_PROBE_ADDRESS" ]]; then
+                fail "HTTP_PROBE_MODE=origin-https membutuhkan PUBLIC_BASE_URL HTTPS dan ORIGIN_PROBE_ADDRESS."
                 return
             fi
-            authority="${HTTP_PROBE_BASE_URL#https://}"
-            authority="${authority%%/*}"
-            host="${authority%%:*}"
-            port=443
-            if [[ "$authority" = *:* ]]; then
-                port="${authority##*:}"
-            fi
-            if [[ ! "$host" =~ ^[A-Za-z0-9.-]+$ ]] || [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || [[ -z "$ORIGIN_PROBE_ADDRESS" ]]; then
-                fail "Hostname, port, atau ORIGIN_PROBE_ADDRESS untuk probe origin tidak valid."
-                return
-            fi
-            HTTP_PROBE_CURL_ARGS=(--resolve "${host}:${port}:${ORIGIN_PROBE_ADDRESS}")
+            configure_origin_https_probe
             pass "Probe HTTP memakai origin ${ORIGIN_PROBE_ADDRESS} dengan hostname TLS ${host}."
             ;;
+        origin-http)
+            if [[ -z "$ORIGIN_PROBE_ADDRESS" ]] || ! configure_origin_http_probe; then
+                fail "HTTP_PROBE_MODE=origin-http membutuhkan ORIGIN_PROBE_ADDRESS dan ORIGIN_PROBE_HTTP_PORT 1-65535."
+                return
+            fi
+            pass "Probe HTTP memakai origin HTTP ${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT} dengan Host ${authority}."
+            ;;
+        auto)
+            if [[ -z "$ORIGIN_PROBE_ADDRESS" ]]; then
+                fail "HTTP_PROBE_MODE=auto membutuhkan ORIGIN_PROBE_ADDRESS."
+                return
+            fi
+            if origin_https_is_healthy; then
+                pass "Probe otomatis memilih origin HTTPS ${ORIGIN_PROBE_ADDRESS} dengan TLS/SNI ${host}."
+            elif origin_http_is_healthy; then
+                pass "Probe otomatis memilih origin HTTP ${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT} dengan Host ${authority}; cocok untuk Cloudflare Tunnel."
+            else
+                configure_public_probe
+                status="$(http_status "${HTTP_PROBE_BASE_URL}/up")"
+                if [[ "$status" =~ ^2[0-9]{2}$ ]]; then
+                    pass "Probe otomatis memakai jalur publik karena origin lokal tidak merespons healthcheck."
+                else
+                    fail "Probe otomatis tidak menemukan origin HTTPS, origin HTTP, atau jalur publik yang sehat (healthcheck terakhir HTTP ${status:-tidak ada respons})."
+                fi
+            fi
+            ;;
         *)
-            fail "HTTP_PROBE_MODE harus public atau origin."
+            fail "HTTP_PROBE_MODE harus auto, public, origin-https, atau origin-http."
             ;;
     esac
 }
@@ -150,10 +234,10 @@ http_headers() { curl -ksS -D - -o /dev/null --max-time 10 "${HTTP_PROBE_CURL_AR
 
 check_edge_http() {
     local headers server status
-    if [[ "$CHECK_EDGE_HTTP" != "true" || "$CHECK_HTTP" != "true" || -z "$PUBLIC_BASE_URL" || "$HTTP_PROBE_MODE" != "origin" ]]; then
+    if [[ "$CHECK_EDGE_HTTP" != "true" || "$CHECK_HTTP" != "true" || -z "$HTTP_PROBE_PUBLIC_BASE_URL" || "$HTTP_PROBE_EFFECTIVE_MODE" = 'public' ]]; then
         return
     fi
-    headers="$(curl -ksS -D - -o /dev/null -w '\n%{http_code}' --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
+    headers="$(curl -ksS -D - -o /dev/null -w '\n%{http_code}' --max-time 10 "${HTTP_PROBE_PUBLIC_BASE_URL}/up" 2>/dev/null || true)"
     status="${headers##*$'\n'}"
     server="$(header_value "$headers" 'Server')"
     if [[ "$status" = '403' && "${server,,}" = *cloudflare* ]]; then
@@ -195,8 +279,15 @@ check_security_headers() {
     value="$(header_value "$headers" 'X-Frame-Options')"; [[ "${value^^}" = "SAMEORIGIN" || "${value^^}" = "DENY" ]] && pass "X-Frame-Options aktif." || fail "Header X-Frame-Options belum aktif."
     value="$(header_value "$headers" 'Referrer-Policy')"; [[ -n "$value" ]] && pass "Referrer-Policy aktif." || fail "Header Referrer-Policy belum aktif."
     value="$(header_value "$headers" 'Permissions-Policy')"; [[ -n "$value" ]] && pass "Permissions-Policy aktif." || fail "Header Permissions-Policy belum aktif."
-    if [[ "$HTTP_PROBE_BASE_URL" = https://* ]]; then
+    if [[ "$HTTP_PROBE_EFFECTIVE_MODE" != 'origin-http' && "$HTTP_PROBE_PUBLIC_BASE_URL" = https://* ]]; then
         value="$(header_value "$headers" 'Strict-Transport-Security')"; [[ -n "$value" ]] && pass "Strict-Transport-Security aktif pada HTTPS." || fail "Header Strict-Transport-Security belum aktif pada HTTPS."
+    elif [[ "$HTTP_PROBE_EFFECTIVE_MODE" = 'origin-http' ]]; then
+        value="$(header_value "$headers" 'Strict-Transport-Security')"
+        if [[ -n "$value" ]]; then
+            pass "Origin HTTP meneruskan Strict-Transport-Security untuk edge HTTPS."
+        else
+            warn "HSTS end-to-end belum dapat diverifikasi dari origin HTTP; aktifkan CHECK_EDGE_HTTP=true untuk observasi edge HTTPS."
+        fi
     else
         warn "HSTS belum diperiksa karena PUBLIC_BASE_URL tidak memakai HTTPS."
     fi

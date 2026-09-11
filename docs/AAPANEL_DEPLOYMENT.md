@@ -195,15 +195,16 @@ bash deploy/sita.sh
 
 ### Cloudflare/WAF dan pemeriksaan origin
 
-Jika Cloudflare atau WAF menampilkan bot verification kepada `curl`, jangan menonaktifkan proteksi untuk membuat gate lulus. Pada profile aaPanel gunakan probe origin berikut. Gate akan mempertahankan hostname `sita.ubg.ac.id` dan TLS/SNI, namun mengarahkan koneksi pemeriksaan dari server ke Nginx lokal `127.0.0.1`. Jalur publik tetap dicatat sebagai observasi nonblokir.
+Jika Cloudflare atau WAF menampilkan bot verification kepada `curl`, jangan menonaktifkan proteksi untuk membuat gate lulus. Profile bawaan memakai `auto`: gate mencoba origin HTTPS lokal, lalu origin HTTP dengan header `Host` yang benar (sesuai Cloudflare Tunnel), lalu jalur publik. Dengan demikian satu profile tetap dapat dipakai ketika topologi kampus belum diketahui. Jalur publik dapat dicatat sebagai observasi nonblokir.
 
 ```env
-HTTP_PROBE_MODE=origin
+HTTP_PROBE_MODE=auto
 ORIGIN_PROBE_ADDRESS=127.0.0.1
+ORIGIN_PROBE_HTTP_PORT=80
 CHECK_EDGE_HTTP=true
 ```
 
-Mode ini hanya dipakai pada server origin aaPanel dengan vhost HTTPS lokal. Docker dan server tanpa CDN/WAF tetap memakai `HTTP_PROBE_MODE=public`.
+Jika topologi sudah dipastikan, operator dapat mengunci mode menjadi `origin-https` untuk aaPanel dengan vhost HTTPS lokal, `origin-http` untuk Cloudflare Tunnel yang meneruskan ke port 80, atau `public` untuk pemeriksaan dari jalur publik. Mode lama `origin` tetap diterima sebagai alias `origin-https` agar profile sebelumnya tidak rusak.
 
 Pilih **aaPanel** pada konsol utama. Menu aaPanel menyediakan pembuatan profile lokal, deploy awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
 
