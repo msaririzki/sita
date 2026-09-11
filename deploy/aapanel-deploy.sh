@@ -10,7 +10,8 @@ COMPOSER_BIN="${COMPOSER_BIN:-composer}"
 NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
 GIT_PULL="${GIT_PULL:-true}"
-RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
+RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
+MIGRATION_MODE="${MIGRATION_MODE:-}"
 RUN_QUEUE_RESTART="${RUN_QUEUE_RESTART:-true}"
 INSTALL_SERVICES="${INSTALL_SERVICES:-false}"
 RESTART_PHP_FPM="${RESTART_PHP_FPM:-true}"
@@ -24,12 +25,25 @@ RUN_SECURITY_GATE="${RUN_SECURITY_GATE:-false}"
 CHECK_DOCKER="${CHECK_DOCKER:-false}"
 AAPANEL_DEPLOY_REEXECUTED="${AAPANEL_DEPLOY_REEXECUTED:-false}"
 DEPLOY_TEMPORARY_DIRECTORY=""
+DB_BACKUP_DEFAULTS_FILE=""
+DB_BACKUP_TEMPORARY_FILE=""
+PENDING_MIGRATIONS=()
+RUN_PENDING_MIGRATIONS=false
+DB_BACKUP_DIR="${DB_BACKUP_DIR:-/www/backup/database/sita}"
 
 export PATH="$(dirname "$PHP_BIN"):$PATH"
 
 APP_WAS_DOWN=0
 
 finish() {
+    if [ -n "$DB_BACKUP_DEFAULTS_FILE" ]; then
+        rm -f "$DB_BACKUP_DEFAULTS_FILE"
+    fi
+
+    if [ -n "$DB_BACKUP_TEMPORARY_FILE" ]; then
+        rm -f "$DB_BACKUP_TEMPORARY_FILE"
+    fi
+
     if [ "$APP_WAS_DOWN" -eq 1 ]; then
         "$PHP_BIN" artisan up >/dev/null 2>&1 || true
     fi
@@ -129,6 +143,184 @@ php_extension_active() {
         *$'\n'"$extension"$'\n'*) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+resolve_migration_mode() {
+    if [ -z "$MIGRATION_MODE" ]; then
+        if [ "$RUN_MIGRATIONS" = 'true' ]; then
+            MIGRATION_MODE='apply'
+        else
+            MIGRATION_MODE='prompt'
+        fi
+    fi
+
+    case "$MIGRATION_MODE" in
+        prompt|apply|skip) ;;
+        *)
+            printf 'MIGRATION_MODE harus prompt, apply, atau skip. Nilai sekarang: %s\n' "$MIGRATION_MODE" >&2
+            exit 2
+            ;;
+    esac
+}
+
+detect_pending_migrations() {
+    local status_output status_exit migration
+
+    set +e
+    status_output="$("$PHP_BIN" artisan migrate:status --pending --no-ansi 2>&1)"
+    status_exit=$?
+    set -e
+
+    if [ "$status_exit" -gt 1 ]; then
+        printf 'Status migration tidak dapat diperiksa. Deployment dihentikan sebelum maintenance mode.\n' >&2
+        printf '%s\n' "$status_output" >&2
+        exit 1
+    fi
+
+    PENDING_MIGRATIONS=()
+    while IFS= read -r migration; do
+        [ -n "$migration" ] && PENDING_MIGRATIONS+=("$migration")
+    done < <(printf '%s\n' "$status_output" | sed -n -E 's/^[[:space:]]*([0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[A-Za-z0-9_]+).*/\1/p')
+
+    if [ "${#PENDING_MIGRATIONS[@]}" -eq 0 ]; then
+        if [ "$status_exit" -eq 0 ]; then
+            printf 'Tidak ada migration database tertunda.\n'
+            return
+        fi
+
+        printf 'Migration tertunda terdeteksi, tetapi daftar migration tidak dapat dibaca. Deployment dihentikan sebelum maintenance mode.\n' >&2
+        printf '%s\n' "$status_output" >&2
+        exit 1
+    fi
+
+    printf 'Ditemukan %s migration database tertunda:\n' "${#PENDING_MIGRATIONS[@]}"
+    for migration in "${PENDING_MIGRATIONS[@]}"; do
+        printf '  - %s\n' "$migration"
+    done
+
+    case "$MIGRATION_MODE" in
+        skip)
+            printf 'Migration tertunda tetapi MIGRATION_MODE=skip. Release dihentikan agar kode baru tidak aktif pada struktur database lama.\n' >&2
+            exit 1
+            ;;
+        apply)
+            printf 'Migration disetujui melalui MIGRATION_MODE=apply. Backup otomatis akan dibuat.\n'
+            RUN_PENDING_MIGRATIONS=true
+            ;;
+        prompt)
+            if [ ! -t 0 ]; then
+                printf 'Migration tertunda membutuhkan persetujuan interaktif. Jalankan dari konsol atau gunakan MIGRATION_MODE=apply setelah backup policy direview.\n' >&2
+                exit 1
+            fi
+
+            local answer
+            read -r -p 'Buat backup database otomatis lalu terapkan migration ini? [y/N]: ' answer
+            case "$answer" in
+                y|Y|yes|YES)
+                    RUN_PENDING_MIGRATIONS=true
+                    printf 'Migration disetujui. Backup otomatis akan dibuat sebelum migration dijalankan.\n'
+                    ;;
+                *)
+                    printf 'Release dibatalkan sebelum maintenance mode, backup, dan migration.\n' >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+create_database_backup() {
+    local db_connection db_host db_port db_database db_username db_password dump_bin backup_dir backup_slug run_id defaults_file backup_tmp backup_file checksum_file
+
+    db_connection="$(env_value DB_CONNECTION)"
+    case "$db_connection" in
+        mysql|mariadb) ;;
+        *)
+            printf 'Backup otomatis migration saat ini mendukung MySQL/MariaDB. DB_CONNECTION sekarang: %s\n' "${db_connection:-kosong}" >&2
+            exit 1
+            ;;
+    esac
+
+    db_host="$(env_value DB_HOST)"
+    db_port="$(env_value DB_PORT)"
+    db_database="$(env_value DB_DATABASE)"
+    db_username="$(env_value DB_USERNAME)"
+    db_password="$(env_value DB_PASSWORD)"
+    if [ -z "$db_host" ] || [ -z "$db_port" ] || [ -z "$db_database" ] || [ -z "$db_username" ]; then
+        printf 'Konfigurasi database pada .env belum lengkap. Backup otomatis dibatalkan.\n' >&2
+        exit 1
+    fi
+
+    dump_bin="$(command -v mysqldump || command -v mariadb-dump || true)"
+    if [ -z "$dump_bin" ]; then
+        printf 'mysqldump atau mariadb-dump tidak tersedia. Backup otomatis dibatalkan.\n' >&2
+        exit 1
+    fi
+    require_command gzip
+    require_command sha256sum
+
+    if [[ "$DB_BACKUP_DIR" != /* ]]; then
+        printf 'DB_BACKUP_DIR harus memakai path absolut. Nilai sekarang: %s\n' "$DB_BACKUP_DIR" >&2
+        exit 2
+    fi
+
+    backup_dir="$DB_BACKUP_DIR"
+    if [ ! -d "$backup_dir" ]; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo install -d -m 700 -o "$(id -un)" -g "$(id -gn)" "$backup_dir"
+        else
+            install -d -m 700 "$backup_dir"
+        fi
+    fi
+    if [ ! -w "$backup_dir" ]; then
+        printf 'Direktori backup tidak dapat ditulis: %s\n' "$backup_dir" >&2
+        exit 1
+    fi
+
+    backup_slug="$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')"
+    run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+    backup_file="${backup_dir}/sita-${backup_slug}-${run_id}.sql.gz"
+    checksum_file="${backup_file}.sha256"
+    defaults_file="$(mktemp)"
+    DB_BACKUP_DEFAULTS_FILE="$defaults_file"
+    backup_tmp="$(mktemp "${backup_dir}/.sita-${backup_slug}-${run_id}.sql.gz.tmp.XXXXXX")"
+    DB_BACKUP_TEMPORARY_FILE="$backup_tmp"
+    chmod 600 "$defaults_file" "$backup_tmp"
+
+    cat > "$defaults_file" <<EOF
+[client]
+host=${db_host}
+port=${db_port}
+user=${db_username}
+password=${db_password}
+EOF
+
+    printf 'Membuat backup MySQL/MariaDB sebelum migration...\n'
+    if ! "$dump_bin" --defaults-extra-file="$defaults_file" --single-transaction --routines --triggers --no-tablespaces --databases "$db_database" | gzip -c > "$backup_tmp"; then
+        rm -f "$defaults_file" "$backup_tmp"
+        DB_BACKUP_DEFAULTS_FILE=""
+        DB_BACKUP_TEMPORARY_FILE=""
+        printf 'Backup database gagal; migration tidak dijalankan.\n' >&2
+        exit 1
+    fi
+    rm -f "$defaults_file"
+    DB_BACKUP_DEFAULTS_FILE=""
+
+    if [ ! -s "$backup_tmp" ] || ! gzip -t "$backup_tmp"; then
+        rm -f "$backup_tmp"
+        DB_BACKUP_TEMPORARY_FILE=""
+        printf 'Backup database tidak valid atau kosong; migration tidak dijalankan.\n' >&2
+        exit 1
+    fi
+
+    mv "$backup_tmp" "$backup_file"
+    DB_BACKUP_TEMPORARY_FILE=""
+    chmod 600 "$backup_file"
+    sha256sum "$backup_file" > "$checksum_file"
+    chmod 600 "$checksum_file"
+
+    printf '[OK] Backup database valid: %s\n' "$backup_file"
+    printf '[OK] Checksum backup: %s\n' "$checksum_file"
 }
 
 validate_php_runtime() {
@@ -332,6 +524,10 @@ fi
 step "Validasi runtime production"
 validate_php_runtime
 validate_node_runtime
+resolve_migration_mode
+
+step "Periksa migration database"
+detect_pending_migrations
 
 step "Aktifkan maintenance mode"
 if [ -f vendor/autoload.php ]; then
@@ -367,7 +563,10 @@ step "Bersihkan cache bootstrap lama"
 "$PHP_BIN" artisan view:clear
 "$PHP_BIN" artisan event:clear
 
-if [ "$RUN_MIGRATIONS" = "true" ]; then
+if [ "$RUN_PENDING_MIGRATIONS" = "true" ]; then
+    step "Backup database sebelum migration"
+    create_database_backup
+
     step "Jalankan migrasi database"
     "$PHP_BIN" artisan migrate --force
 fi

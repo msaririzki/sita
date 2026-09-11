@@ -131,7 +131,12 @@ NGINX_CONFIG=/www/server/panel/vhost/nginx/${domain}.conf
 HEALTHCHECK_URL=${public_url}/up
 PUBLIC_BASE_URL=${public_url}
 
-# Ubah menjadi true hanya setelah migration direview dan backup database ada.
+# Jika migration ditemukan saat Release, konsol menampilkan daftar lalu meminta
+# Y untuk membuat backup otomatis dan menerapkan migration.
+MIGRATION_MODE=prompt
+DB_BACKUP_DIR=/www/backup/database/sita
+
+# Kompatibilitas perintah lama. Tetap false; gunakan MIGRATION_MODE di atas.
 RUN_MIGRATIONS=false
 RUN_DEPENDENCY_AUDIT=false
 DEPENDENCY_AUDIT_MODE=report
@@ -220,7 +225,8 @@ show_profile() {
         printf '  PHP_FPM_SOCKET=%s\n' "$(profile_value PHP_FPM_SOCKET)"
         printf '  NGINX_CONFIG=%s\n' "$(profile_value NGINX_CONFIG)"
         printf '  HEALTHCHECK_URL=%s\n' "$(profile_value HEALTHCHECK_URL)"
-        printf '  RUN_MIGRATIONS=%s\n' "$(profile_value RUN_MIGRATIONS)"
+        printf '  MIGRATION_MODE=%s\n' "$(profile_value MIGRATION_MODE)"
+        printf '  DB_BACKUP_DIR=%s\n' "$(profile_value DB_BACKUP_DIR)"
         printf '  RUN_DEPENDENCY_AUDIT=%s\n' "$(profile_value RUN_DEPENDENCY_AUDIT)"
         printf '%bHanya field operasional ditampilkan; profile tidak boleh menyimpan secret.%b\n' "$dim" "$reset"
     else
@@ -328,7 +334,8 @@ show_tutorial() {
     printf '      deploy awal dan memasang service Reverb, queue, serta scheduler.\n\n'
     printf '  [4] Release update aplikasi\n'
     printf '      Dipakai setiap ada pembaruan kode. Menjalankan pemeriksaan awal,\n'
-    printf '      deploy, pemeriksaan integrasi, dan Security Gate.\n\n'
+    printf '      backup otomatis + migration bila terdeteksi dan Anda menekan Y,\n'
+    printf '      lalu pemeriksaan integrasi dan Security Gate.\n\n'
 
     printf '%bMenu pendukung%b\n' "$bold$blue" "$reset"
     printf '  [5] Membuka 80 baris terakhir log deployment.\n'
@@ -338,8 +345,8 @@ show_tutorial() {
 
     printf '%bCatatan keamanan%b\n' "$bold$yellow" "$reset"
     printf '  - Release berhenti bila pemeriksaan penting gagal; perbaiki penyebabnya dahulu.\n'
-    printf '  - Migration tidak otomatis dijalankan karena RUN_MIGRATIONS=false.\n'
-    printf '    Aktifkan hanya setelah migration direview dan backup database tersedia.\n'
+    printf '  - Bila ada migration, Release menampilkan daftar dan meminta konfirmasi Y.\n'
+    printf '    Setelah Y, backup MySQL/MariaDB diverifikasi sebelum migration dijalankan.\n'
     printf '  - PHP extension diperiksa oleh Check. Perubahan extension pada runtime PHP\n'
     printf '    yang dipakai situs lain harus dilakukan dengan hati-hati melalui aaPanel.\n\n'
 

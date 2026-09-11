@@ -130,7 +130,7 @@ Sesudah situs dibuat, buka tombol **Conf** pada entri tersebut dan terapkan konf
 /etc/init.d/nginx reload
 ```
 
-Deployment berikutnya cukup dijalankan dari terminal aaPanel. Ia memperbarui source, dependency, asset, cache Laravel, migrasi bila `RUN_MIGRATIONS=true`, dan layanan runtime; entri website aaPanel tidak berubah. Karena itu, database aplikasi hanya dapat berubah ketika migrasi dijalankan, bukan karena registrasi situs pada GUI.
+Deployment berikutnya cukup dijalankan dari terminal aaPanel. Ia memperbarui source, dependency, asset, cache Laravel, dan layanan runtime; entri website aaPanel tidak berubah. Bila migration tertunda, konsol menampilkan daftar migration dan meminta persetujuan operator sebelum membuat backup otomatis dan menerapkan perubahan database.
 
 ### Batas aman antara GUI dan otomatisasi
 
@@ -171,7 +171,7 @@ Untuk rilis aplikasi, gunakan:
 bash deploy/aapanel-release.sh release
 ```
 
-Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Nilai default `RUN_MIGRATIONS=false`; ubah menjadi `true` di profile hanya setelah migration direview dan backup database tersedia.
+Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan, dan menyimpan log bertimestamp di `storage/logs/deployment/`. Urutannya adalah sinkronisasi GUI/runtime, precheck, deployment, integration gate, sinkronisasi pascadeploy, dan security gate. Saat `MIGRATION_MODE=prompt` yang menjadi default, migration tertunda ditampilkan sebelum maintenance mode dan operator cukup menjawab `Y`. Skrip lalu membuat dump MySQL/MariaDB terkompresi, menguji integritas gzip, menulis checksum, dan hanya setelah itu menjalankan `php artisan migrate --force`. Backup default tersimpan di `/www/backup/database/sita`; ubah `DB_BACKUP_DIR` pada profile bila server memakai lokasi backup lain.
 
 ### VM aaPanel baru dan path clone bebas
 
@@ -184,9 +184,9 @@ bash deploy/sita.sh
 
 Pilih **aaPanel** pada konsol utama. Menu aaPanel menyediakan pembuatan profile lokal, deploy awal, check, release, serta pembacaan log. Profile otomatis memakai path clone saat ini dan tidak menyimpan secret; isi `.env` tetap dilakukan terpisah dengan kredensial database yang benar.
 
-Sebelum memilih **Bootstrap server baru**, lakukan langkah GUI aaPanel yang memang bersifat infrastruktur: install Nginx dan PHP 8.4, aktifkan extension PHP yang tersedia, buat website dengan domain/path clone, buat database serta user, dan aktifkan SSL setelah DNS siap. Jika ada extension SITA yang tidak tersedia di GUI, gunakan prosedur CLI aaPanel yang spesifik untuk versi PHP tersebut pada maintenance window, lalu jalankan menu **Check**. Jangan gunakan paket PHP Ubuntu (`apt install php-*`) karena tidak mengubah build PHP aaPanel.
+Sebelum memilih **Siapkan server baru**, lakukan langkah GUI aaPanel yang memang bersifat infrastruktur: install Nginx dan PHP 8.4, aktifkan extension PHP yang tersedia, buat website dengan domain/path clone, buat database serta user, dan aktifkan SSL setelah DNS siap. Jika ada extension SITA yang tidak tersedia di GUI, gunakan prosedur CLI aaPanel yang spesifik untuk versi PHP tersebut pada maintenance window, lalu jalankan menu **Check**. Jangan gunakan paket PHP Ubuntu (`apt install php-*`) karena tidak mengubah build PHP aaPanel.
 
-Bootstrap memasang unit systemd Reverb, queue, dan scheduler satu kali melalui `INSTALL_SERVICES=true`. Sebelum memulai database kosong, ubah `RUN_MIGRATIONS=true` pada profile setelah database dan backup telah diperiksa. Release rutin tidak memasang ulang unit service.
+Deploy awal memasang unit systemd Reverb, queue, dan scheduler satu kali melalui `INSTALL_SERVICES=true`. Pada database kosong, konfirmasi `Y` ketika daftar migration tampil agar skrip membuat backup awal lalu membangun struktur tabel. Release rutin tidak memasang ulang unit service.
 
 ## Precheck Server
 
@@ -241,7 +241,7 @@ Script akan:
 - restart/reload PHP-FPM aaPanel agar opcache/runtime setara dengan container homeserver yang diganti;
 - keluar dari maintenance mode.
 
-Script tidak menjalankan `migrate:fresh`, `db:seed`, `truncate`, atau penghapusan tabel. Namun `php artisan migrate --force` dapat mengubah struktur database dan dapat mengubah data bila migration yang akan diterapkan memang berisi migrasi data. Buat backup database sebelum menjalankan deployment pada server kampus.
+Script tidak menjalankan `migrate:fresh`, `db:seed`, `truncate`, atau penghapusan tabel. Namun `php artisan migrate --force` dapat mengubah struktur database dan dapat mengubah data bila migration yang akan diterapkan memang berisi migrasi data. Saat migration tertunda, konsol membuat backup otomatis sebelum menjalankannya. Tetap tinjau daftar migration dan jawab `Y` hanya jika perubahan database sudah dipahami.
 
 Deploy dengan healthcheck seperti CI/CD homeserver:
 
@@ -317,11 +317,13 @@ Untuk deploy tanpa pull:
 GIT_PULL=false DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
 ```
 
-Untuk deploy tanpa migration:
+Untuk automation noninteraktif tanpa migration, gunakan:
 
 ```bash
-RUN_MIGRATIONS=false DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
+MIGRATION_MODE=skip DOMAIN=sita.kampus.ac.id bash deploy/aapanel-deploy.sh
 ```
+
+Mode `skip` menghentikan release bila ada migration tertunda. Untuk automation noninteraktif yang sudah memiliki persetujuan perubahan database, gunakan `MIGRATION_MODE=apply`; skrip tetap membuat backup otomatis dan menghentikan migration bila backup gagal.
 
 ## Nginx aaPanel
 

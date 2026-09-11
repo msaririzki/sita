@@ -37,7 +37,7 @@ Urutan normal:
 1. Buat profile aaPanel.
 2. Jalankan `Check kesiapan server`.
 3. Pada server baru, pilih `Siapkan server baru` untuk deploy awal dan mengaktifkan service runtime.
-4. Pada update rutin, pilih `Release update aplikasi`.
+4. Pada update rutin, pilih `Release update aplikasi`. Bila ada migration tertunda, konsol menampilkan daftar, meminta `Y`, membuat serta memverifikasi backup MySQL/MariaDB otomatis, kemudian menjalankan migration.
 
 Perintah langsung:
 
@@ -55,4 +55,4 @@ bash deploy/sita.sh release
 
 ## Log dan keputusan
 
-Setiap aksi runner menyimpan transcript bertimestamp pada `storage/logs/deployment/`. Status `siap` berarti seluruh pemeriksaan wajib pada aksi tersebut lulus. Peringatan tetap harus dibaca melalui menu log sebelum keputusan production dibuat.
+Backup migration aaPanel disimpan default pada `/www/backup/database/sita` dengan mode file `600` dan checksum `.sha256`. Lokasi dapat diatur melalui `DB_BACKUP_DIR` pada profile lokal. Setiap aksi runner menyimpan transcript bertimestamp pada `storage/logs/deployment/`. Status `siap` berarti seluruh pemeriksaan wajib pada aksi tersebut lulus. Peringatan tetap harus dibaca melalui menu log sebelum keputusan production dibuat.
