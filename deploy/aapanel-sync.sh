@@ -159,7 +159,19 @@ else
     warn "Binary Nginx aaPanel tidak ditemukan: ${NGINX_BIN}"
 fi
 
-matching_vhosts="$(run_privileged grep -rl --include='*.conf' -F "fastcgi_pass unix:${PHP_FPM_SOCKET};" "$NGINX_VHOST_DIR" 2>/dev/null || true)"
+socket_references="$(run_privileged grep -rl --include='*.conf' -F "fastcgi_pass unix:${PHP_FPM_SOCKET};" "$NGINX_VHOST_DIR" 2>/dev/null || true)"
+matching_vhosts=''
+while IFS= read -r vhost; do
+    [ -n "$vhost" ] || continue
+
+    # aaPanel's phpfpm_status.conf contains every PHP socket for local status
+    # endpoints. It is not a website that shares the PHP runtime with SITA.
+    if run_privileged grep -Eq '^[[:space:]]*server_name[[:space:]]+127\.0\.0\.1[[:space:]]*;' "$vhost"; then
+        continue
+    fi
+
+    matching_vhosts+="${matching_vhosts:+$'\n'}${vhost}"
+done <<< "$socket_references"
 matching_count="$(printf '%s\n' "$matching_vhosts" | sed '/^$/d' | wc -l | tr -d ' ')"
 if [ "$matching_count" -eq 1 ]; then
     ok "Runtime PHP ${PHP_FPM_SOCKET} hanya dipakai vhost SITA"
