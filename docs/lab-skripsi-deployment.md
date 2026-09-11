@@ -395,6 +395,12 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Validasi statis:** seluruh skrip pada `deploy/` dan `scripts/` lulus `bash -n`; pemeriksaan `git diff --check` juga lulus. ShellCheck tidak tersedia pada workstation sehingga tidak dijadikan klaim hasil uji.
 - **Makna skripsi:** hasil ini menjadi baseline stabil untuk eksperimen gangguan berikutnya. Reset VM tidak dilakukan karena baseline ini adalah bukti uji yang aktif; pengujian reset harus memakai snapshot atau VM bersih terpisah agar bukti dan konfigurasi pembanding tidak hilang.
 
+### E-44 - Audit dependency runtime produksi
+
+- **Node runtime:** `npm audit --omit=dev --json` pada release aktif aaPanel melaporkan `0` advisory produksi. Delapan temuan yang muncul saat `npm ci` berasal dari dependency pengembangan dan tidak termasuk pemeriksaan runtime ini.
+- **PHP runtime:** Composer global aaPanel terlalu lama untuk menyediakan perintah `audit` dan menampilkan deprecation pada PHP 8.4. Sebagai pengganti tanpa mengubah Composer global, Composer sementara diunduh bersama checksum resmi, checksum diverifikasi, lalu `composer audit --no-dev --format=json` dijalankan pada release aktif. Hasilnya `0` advisory produksi.
+- **Makna skripsi:** audit dependency perlu membedakan alat build dari dependency yang benar-benar dibawa aplikasi production. Keterbatasan Composer global juga membuktikan nilai runner yang dapat memakai tooling sementara terverifikasi tanpa memodifikasi runtime aaPanel bersama.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
