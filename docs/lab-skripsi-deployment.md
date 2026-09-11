@@ -294,6 +294,13 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 - **Hasil akhir:** semua pemeriksaan integrasi lulus, termasuk PHP-FPM, Reverb, queue setelah readiness wait, scheduler, storage publik, dan WebSocket upgrade. Security Gate menghasilkan nol kegagalan dan satu peringatan HSTS karena endpoint lab masih HTTP. Halaman utama, login, dan `/up` dikonfirmasi HTTP `200` setelah release.
 - **Artefak:** runner menyimpan transcript bertimestamp di `storage/logs/deployment/`; profile server dipisahkan dari repository dan tidak berisi rahasia aplikasi.
 
+### E-31 - Konsol terminal interaktif untuk operator aaPanel
+
+- **Rancangan:** `deploy/sita.sh` menjadi satu perintah yang mudah diingat. Konsol menyediakan pembuatan profile lokal tanpa secret, bootstrap awal, check, release rutin, dan pembacaan log terakhir. Implementasi deployment tetap dipisah dalam skrip fokus agar dapat diaudit dan diuji.
+- **Portabilitas path:** root proyek dihitung dari lokasi `deploy/sita.sh`, bukan dipasang tetap pada `/www/wwwroot/sita`. Profile menyimpan `APP_DIR` yang harus sama dengan lokasi clone, sehingga instalasi seperti `/www/wwwroot/webkampus/sita` tetap memakai path yang benar untuk service, log, vhost, dan deployment.
+- **Validasi lab pada commit `8b4e2ef`:** mode noninteraktif `bash deploy/sita.sh check` lulus. Menu interaktif menampilkan enam tindakan operator dan membaca profile lab tanpa mengekspos `.env` atau kredensial database.
+- **Makna skripsi:** usability bukan hanya tampilan aplikasi. Konsol berfase, profile lokal, dan log bertimestamp mengurangi ketergantungan pada hafalan command tanpa menghilangkan keputusan eksplisit untuk migrasi database atau perubahan infrastruktur.
+
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
