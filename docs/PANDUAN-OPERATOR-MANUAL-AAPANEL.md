@@ -91,98 +91,34 @@ npm --version
 
 Node harus minimal `20.19` atau `22.12`; gunakan Node 22 LTS. Bila Node dari aaPanel belum masuk `PATH`, tambahkan path Node version manager ke `PATH` akun deploy sebelum menjalankan console. Verifikasi ulang sampai dua perintah di atas menghasilkan versi.
 
-## 4. Clone source dan buat `.env`
+## 4. Jalankan wizard instalasi awal
 
-Login terminal sebagai pengguna deploy, lalu jalankan perintah berikut. Ganti `BRANCH` hanya setelah branch tersebut sudah disetujui sebagai branch rilis.
-
-```bash
-export APP_DIR=/www/wwwroot/sita-aapanel.ikydev.com
-export BRANCH=codex/dependency-audit-p1
-sudo chown "$USER":www "$APP_DIR"
-sudo chmod 750 "$APP_DIR"
-cd "$APP_DIR"
-git init
-git remote add origin https://github.com/msaririzki/sita.git
-git fetch --depth=1 origin "$BRANCH"
-git checkout -b "$BRANCH" FETCH_HEAD
-cd "$APP_DIR"
-cp .env.example .env
-chmod 640 .env
-chgrp www .env
-```
-
-Direktori situs baru aaPanel lazimnya sudah berisi `.user.ini`, `.htaccess`, atau halaman error. Perintah di atas membuat Git checkout tanpa menghapus file aaPanel tersebut. Jika Git melaporkan konflik nama file, berhenti, periksa `git status --short` dan `pwd`; jangan menghapus isi direktori secara massal.
-
-Edit `.env` memakai editor lokal server, misalnya `nano .env`. Nilai penting untuk lab Tunnel adalah berikut. Isi placeholder database dan mail sendiri.
-
-```dotenv
-APP_NAME=SITA
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://sita-aapanel.ikydev.com
-APP_TIMEZONE=Asia/Makassar
-APP_KEY=base64:ISI_DENGAN_KUNCI_32_BYTE
-LOG_LEVEL=info
-
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=sita_aapanel
-DB_USERNAME=sita_aapanel
-DB_PASSWORD=ISI_PASSWORD_DATABASE
-
-SESSION_DRIVER=database
-SESSION_SECURE_COOKIE=true
-SESSION_SAME_SITE=lax
-CACHE_STORE=database
-QUEUE_CONNECTION=database
-BROADCAST_CONNECTION=reverb
-
-REVERB_APP_ID=sita-aapanel
-REVERB_APP_KEY=ISI_KUNCI_REVERB
-REVERB_APP_SECRET=ISI_SECRET_REVERB
-REVERB_HOST=sita-aapanel.ikydev.com
-REVERB_PORT=443
-REVERB_SCHEME=https
-REVERB_INTERNAL_HOST=127.0.0.1
-REVERB_INTERNAL_PORT=8080
-REVERB_INTERNAL_SCHEME=http
-REVERB_SERVER_HOST=127.0.0.1
-REVERB_SERVER_PORT=8080
-REVERB_ALLOWED_ORIGINS=sita-aapanel.ikydev.com
-
-VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
-VITE_REVERB_HOST=sita-aapanel.ikydev.com
-VITE_REVERB_PORT=443
-VITE_REVERB_SCHEME=https
-```
-
-Untuk menghasilkan nilai rahasia tanpa menyalinnya ke chat:
+Sesudah komponen GUI pada bagian sebelumnya tersedia, login ke terminal aaPanel sebagai pengguna deploy. Jalankan **satu perintah** berikut:
 
 ```bash
-openssl rand -base64 32       # untuk APP_KEY, tambahkan awalan base64:
-openssl rand -hex 16          # untuk REVERB_APP_KEY
-openssl rand -hex 32          # untuk REVERB_APP_SECRET
+curl -fsSL https://raw.githubusercontent.com/msaririzki/sita/codex/dependency-audit-p1/deploy/aapanel-first-install.sh -o /tmp/sita-first-install.sh && bash /tmp/sita-first-install.sh
 ```
 
-Tetap isi `MAIL_*` dengan layanan SMTP yang disetujui bila fitur email SITA akan diuji. Jangan menggunakan nilai production kampus pada lab.
+Wizard menanyakan domain, lokasi source, branch Git, dan kredensial database. Password database dimasukkan tanpa tampil di terminal. Ia lalu melakukan seluruh pekerjaan awal berikut:
 
-## 5. Buat profile Deployment Console
+- mempertahankan file bawaan aaPanel pada folder website;
+- mengambil source dari branch yang dipilih;
+- membuat `.env` production dengan permission `640` dan grup runtime `www`;
+- membuat `APP_KEY`, `REVERB_APP_KEY`, dan `REVERB_APP_SECRET` secara acak tanpa menampilkannya;
+- membuat profile deployment non-rahasia;
+- menawarkan Bootstrap langsung setelah Node.js siap.
 
-Dari `APP_DIR`, jalankan:
+Nilai default path mengikuti pola aaPanel: `/www/wwwroot/<domain>`. Path tetap dapat diganti pada pertanyaan wizard, misalnya `/www/wwwroot/webkampus/sita`. Pastikan domain pada Website aaPanel menunjuk ke folder yang sama. Jangan memasukkan password, `APP_KEY`, atau secret Reverb ke Git maupun chat.
 
-```bash
-bash deploy/sita.sh
-```
+Bila wizard berhenti karena konflik file Git, periksa `pwd` dan `git status --short`. Jangan menghapus isi folder website secara massal; file seperti `.user.ini`, `.htaccess`, dan halaman error dibuat aaPanel dan perlu dipertahankan.
 
-Pilih **aaPanel**, lalu pilih **Buat profile server**. Isi:
+Untuk email, wizard memakai `MAIL_MAILER=log` sebagai nilai aman pada lab. Sebelum fitur email diuji, isi `MAIL_*` dengan layanan SMTP yang disetujui pada file `.env` lokal.
 
-```text
-Domain: sita-aapanel.ikydev.com
-URL publik: https://sita-aapanel.ikydev.com
-```
+## 5. Profile Deployment Console
 
-Console membuat `deploy/aapanel-profile.env` dengan mode file `600`, tanpa password. Buka file tersebut dan pastikan nilai berikut ada atau diubah:
+Wizard membuat `deploy/aapanel-profile.env` dengan mode `600`. Profile adalah **kartu konfigurasi operasional server** yang digunakan console pada setiap check, release, backup, dan rollback. Isinya berupa domain, path aplikasi, lokasi vhost, service PHP-FPM, URL healthcheck, lokasi backup, dan pengaturan atomic release. Karena disimpan sekali, operator tidak perlu mengisi data tersebut ulang setiap ada update aplikasi.
+
+Profile **tidak** berisi `DB_PASSWORD`, `APP_KEY`, token Cloudflare, atau secret Reverb. Semua nilai rahasia hanya tersimpan di `.env` lokal. Nilai penting yang dibuat wizard adalah:
 
 ```dotenv
 HTTP_PROBE_MODE=auto
@@ -198,8 +134,12 @@ MANAGE_NGINX_ROOT=prompt
 RELEASE_KEEP=3
 ```
 
-Profile boleh menyimpan domain dan path, tetapi tidak boleh memuat `DB_PASSWORD`, `APP_KEY`, token Cloudflare, atau secret Reverb.
+Sesudah instalasi awal, seluruh operasi rutin memakai console dari folder source:
 
+```bash
+cd /www/wwwroot/sita-aapanel.ikydev.com
+bash deploy/sita.sh
+```
 ## 6. Pasang Cloudflare Tunnel
 
 Di Cloudflare Zero Trust:
