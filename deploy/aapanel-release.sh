@@ -54,6 +54,7 @@ RUN_DEPENDENCY_AUDIT="${RUN_DEPENDENCY_AUDIT:-false}"
 DEPENDENCY_AUDIT_MODE="${DEPENDENCY_AUDIT_MODE:-report}"
 DEPENDENCY_AUDIT_THRESHOLD="${DEPENDENCY_AUDIT_THRESHOLD:-high}"
 INSTALL_SERVICES=false
+INSTALL_MISSING_PHP_EXTENSIONS="${INSTALL_MISSING_PHP_EXTENSIONS:-true}"
 
 if [ "$ACTION" = 'bootstrap' ]; then
     INSTALL_SERVICES=true
@@ -207,6 +208,18 @@ security_gate() {
         bash scripts/security-gate.sh --mode=warn --environment=aapanel
 }
 
+prepare_php_extensions() {
+    if [ "$INSTALL_MISSING_PHP_EXTENSIONS" != 'true' ]; then
+        printf 'Pemasangan extension PHP otomatis dinonaktifkan oleh profile.\n'
+        return
+    fi
+
+    DOMAIN="$DOMAIN" \
+        PHP_BIN="$PHP_BIN" \
+        PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
+        bash "$PROJECT_ROOT/deploy/aapanel-php-extensions.sh"
+}
+
 banner
 if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
     phase '1/3' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
@@ -218,15 +231,26 @@ if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
 fi
 
 if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
-    phase '1/5' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-    phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '3/5' 'Deployment awal dan pemasangan service runtime' deploy_application
+        phase '1/6' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
+        phase '2/6' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+        phase '3/6' 'Precheck runtime dan aplikasi' doctor_environment
+    else
+        phase '1/5' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+        phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
+    fi
+    if [ "$ACTION" = 'bootstrap' ]; then
+        phase '4/6' 'Deployment awal dan pemasangan service runtime' deploy_application
     else
         phase '3/5' 'Deployment aplikasi' deploy_application
     fi
-    phase '4/5' 'Validasi sinkronisasi pascadeploy' sync_environment
-    phase '5/5' 'Security gate pascadeploy' security_gate
+    if [ "$ACTION" = 'bootstrap' ]; then
+        phase '5/6' 'Validasi sinkronisasi pascadeploy' sync_environment
+        phase '6/6' 'Security gate pascadeploy' security_gate
+    else
+        phase '4/5' 'Validasi sinkronisasi pascadeploy' sync_environment
+        phase '5/5' 'Security gate pascadeploy' security_gate
+    fi
     if [ "$ACTION" = 'bootstrap' ]; then
         printf '%bDEPLOY AWAL DINYATAKAN SIAP%b\n' "$green" "$reset"
     else

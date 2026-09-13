@@ -44,7 +44,9 @@ bcmath, ctype, dom, fileinfo, filter, intl, mbstring, openssl,
 pcntl, pcre, pdo, pdo_mysql, session, tokenizer, xml, zip
 ```
 
-Setelah memasang extension, gunakan tombol restart PHP-FPM dari aaPanel atau jalankan pemeriksaan pada bagian 6. Extension berlaku untuk seluruh situs yang memakai PHP 8.4. Pada server multi-situs, lakukan pada maintenance window dan uji situs lain yang memakai runtime yang sama.
+Console `bootstrap` otomatis memeriksa dan memperbaiki `fileinfo` bila extension itu tidak tersedia, termasuk pada build aaPanel yang memasang PHP dengan `--disable-fileinfo`. Ia membangun modul yang cocok dengan PHP aktif, menyimpan backup `php.ini` dan modul lama di `/var/backups/sita/php-extensions/`, reload PHP-FPM, lalu memverifikasinya. Proses otomatis hanya berjalan jika runtime PHP dipakai satu vhost. Pada server multi-situs, ia berhenti sebelum mengubah runtime bersama sampai administrator menyetujui perubahan pada maintenance window.
+
+Extension lain tetap diperiksa oleh console. Jika ada yang tidak tersedia, perbaiki melalui aaPanel sesuai versi PHP aktif lalu jalankan Check ulang. Jangan memasang paket `apt install php-*` karena itu tidak memperbaiki runtime PHP aaPanel.
 
 ### 3.3 Buat website
 
@@ -225,7 +227,7 @@ cd /www/wwwroot/sita-aapanel.ikydev.com/sita
 bash deploy/sita.sh aapanel check
 ```
 
-Perbaiki setiap `[FAIL]`. Pada VM lab saat prosedur ini ditulis, dua item yang harus diperhatikan adalah Node.js yang belum tersedia dan extension `fileinfo` yang belum aktif.
+Perbaiki setiap `[FAIL]`. Pada VM lab saat prosedur ini ditulis, Node.js belum tersedia. Extension `fileinfo` belum aktif, tetapi akan diperbaiki otomatis saat Bootstrap setelah Node.js siap.
 
 Jika Check siap, jalankan deploy awal:
 
