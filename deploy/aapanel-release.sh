@@ -32,6 +32,8 @@ DOMAIN="${DOMAIN:?DOMAIN wajib diisi pada profile}"
 APP_DIR="${APP_DIR:-$PROJECT_ROOT}"
 SITE_ROOT="${SITE_ROOT:-$APP_DIR}"
 PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
+NODE_BIN="${NODE_BIN:-node}"
+NPM_BIN="${NPM_BIN:-npm}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php-fpm-84}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-$PHP_FPM_RUNTIME_USER}"
@@ -137,6 +139,8 @@ sync_environment() {
         APP_DIR="$(active_app_dir)" \
         SITE_ROOT="$SITE_ROOT" \
         PHP_BIN="$PHP_BIN" \
+        NODE_BIN="$NODE_BIN" \
+        NPM_BIN="$NPM_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         PHP_FPM_SOCKET="$PHP_FPM_SOCKET" \
         NGINX_CONFIG="$NGINX_CONFIG" \
@@ -160,6 +164,7 @@ deploy_application() {
             SITE_ROOT="$SITE_ROOT" \
             DOMAIN="$DOMAIN" \
             PHP_BIN="$PHP_BIN" \
+            NPM_BIN="$NPM_BIN" \
             PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
             PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
             PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
@@ -179,6 +184,8 @@ deploy_application() {
 
     DOMAIN="$DOMAIN" \
         PHP_BIN="$PHP_BIN" \
+        NODE_BIN="$NODE_BIN" \
+        NPM_BIN="$NPM_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \

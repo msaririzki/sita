@@ -91,7 +91,7 @@ node --version
 npm --version
 ```
 
-Node harus minimal `20.19` atau `22.12`; gunakan Node 22 LTS. Bila Node dari aaPanel belum masuk `PATH`, tambahkan path Node version manager ke `PATH` akun deploy sebelum menjalankan console. Verifikasi ulang sampai dua perintah di atas menghasilkan versi.
+Node harus minimal `20.19` atau `22.12`; gunakan Node 22 LTS. Bila Check menemukan Node/npm belum tersedia, menu `[2]` menawarkan pemasangan Node 22 khusus SITA di `/opt/sita/node`. Arsip berasal dari nodejs.org dan checksum resmi diverifikasi; Node global aaPanel maupun website lain tidak diubah. Verifikasi ulang sampai dua perintah di atas menghasilkan versi.
 
 ## 4. Clone source lalu jalankan console
 

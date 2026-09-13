@@ -483,3 +483,9 @@ Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tet
 - **Temuan:** terminal server kampus dijalankan sebagai `root`. Default lama pada pembuat unit systemd mengambil `id -un`, sehingga Reverb, queue, dan scheduler dapat terbentuk dengan `User=root` jika deployment dipanggil dari terminal tersebut.
 - **Perbaikan:** Deployment Console kini meneruskan `PHP_FPM_RUNTIME_USER` dan group runtime ke pembuat service. Default service adalah `www:www`; root hanya dipakai untuk menulis unit systemd, reload PHP-FPM, mengubah vhost, serta mengatur permission. Script tetap mendukung akun deploy non-root melalui `sudo`.
 - **Validasi statis:** seluruh skrip `deploy/*.sh` lulus `bash -n`. Penerapan unit pada lab dilakukan pada Bootstrap berikutnya dan harus diverifikasi melalui `systemctl cat sita-<domain>-reverb.service` untuk membuktikan `User=www`.
+
+### E-57 - Remediasi Node.js terisolasi dari Check aaPanel
+
+- **Temuan:** Check pada VM baseline mendeteksi Node/npm belum tersedia. Node diperlukan Vite untuk build candidate, tetapi memasang atau mengganti Node global aaPanel dapat mengubah runtime aplikasi lain.
+- **Perbaikan:** bila Check interaktif gagal dan Node/npm tidak tersedia, console menawarkan pemasangan Node 22 khusus SITA. Runner mengambil rilis Node 22 terbaru dari nodejs.org, mengambil `SHASUMS256.txt`, memverifikasi SHA-256 archive, memasang runtime root-owned pada `/opt/sita/node/<versi>`, lalu mengarahkannya melalui symlink `current`. Profile mencatat binary Node/npm absolut.
+- **Batas isolasi:** perubahan hanya terjadi setelah operator menjawab `Y`; Node global aaPanel, PHP, Nginx, dan runtime situs lain tidak diubah. Check diulang otomatis sesudah pemasangan.

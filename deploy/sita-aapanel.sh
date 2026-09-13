@@ -55,6 +55,24 @@ deployment_strategy() {
     printf '%s' "${strategy:-in-place}"
 }
 
+command_available() {
+    local executable="$1"
+    if [[ "$executable" == */* ]]; then
+        [ -x "$executable" ]
+    else
+        command -v "$executable" >/dev/null 2>&1
+    fi
+}
+
+node_runtime_missing() {
+    local node_bin npm_bin
+    node_bin="$(profile_value NODE_BIN)"
+    npm_bin="$(profile_value NPM_BIN)"
+    node_bin="${node_bin:-node}"
+    npm_bin="${npm_bin:-npm}"
+    ! command_available "$node_bin" || ! command_available "$npm_bin"
+}
+
 release_menu_copy() {
     if [ "$(deployment_strategy)" = 'atomic' ]; then
         printf '%s' 'Atomic Release + rollback kode'
@@ -298,6 +316,39 @@ run_action() {
     bash "$PROJECT_ROOT/deploy/aapanel-release.sh" "$action"
 }
 
+run_check_with_remediation() {
+    local answer
+
+    if run_action check; then
+        show_action_result check
+        return
+    fi
+
+    if node_runtime_missing; then
+        printf '\n%bNode.js/npm belum tersedia. Instal runtime Node 22 khusus SITA sekarang?%b\n' "$yellow" "$reset"
+        printf 'Runtime akan dipasang di /opt/sita/node, checksum resmi diverifikasi, dan Node aaPanel global tidak diubah.\n'
+        read -r -p 'Lanjutkan instalasi otomatis? [y/N]: ' answer
+        case "$answer" in
+            y|Y|yes|YES)
+                if bash "$PROJECT_ROOT/deploy/aapanel-node-runtime.sh"; then
+                    printf '\nMengulang Check setelah instalasi Node...\n'
+                    if run_action check; then
+                        show_action_result check
+                    else
+                        show_action_failure check
+                    fi
+                else
+                    show_action_failure check
+                fi
+                ;;
+            *) show_action_failure check ;;
+        esac
+        return
+    fi
+
+    show_action_failure check
+}
+
 show_action_result() {
     local action="$1"
 
@@ -524,7 +575,7 @@ while true; do
     title
     printf '\n'
     printf '  %b[1]%b  Inisialisasi aplikasi    %b.env + profile + key aman, sekali per server%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[2]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[2]%b  Check kesiapan server     %bPemeriksaan + opsi perbaikan Node%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[3]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     if [ "$(deployment_strategy)" = 'atomic' ]; then
         printf '  %b[4]%b  Atomic Release            %bCandidate + gate + rollback kode%b\n' "$cyan" "$reset" "$dim" "$reset"
@@ -540,7 +591,7 @@ while true; do
     read -r -p 'Pilih menu: ' choice
     case "$choice" in
         1) initialize_application ;;
-        2) if run_action check; then show_action_result check; else show_action_failure check; fi ;;
+        2) run_check_with_remediation ;;
         3) if run_action bootstrap; then show_action_result bootstrap; else show_action_failure bootstrap; fi ;;
         4) if run_action release; then show_action_result release; else show_action_failure release; fi ;;
         5) show_last_log ;;
