@@ -152,6 +152,8 @@ doctor_environment() {
     DOMAIN="$DOMAIN" \
         APP_DIR="$(active_app_dir)" \
         PHP_BIN="$PHP_BIN" \
+        NODE_BIN="$NODE_BIN" \
+        NPM_BIN="$NPM_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         CHECK_SERVICES=true \
