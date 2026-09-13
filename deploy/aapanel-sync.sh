@@ -85,6 +85,21 @@ read_privileged() {
     fi
 }
 
+read_effective_nginx_config() {
+    local fragment extension_directory
+
+    config_content="$(read_privileged "$NGINX_CONFIG")" || return 1
+    # aaPanel expands extension/<domain>/*.conf inside the server block. Include
+    # those fragments in reconciliation so Laravel/Reverb rules are inspected.
+    extension_directory="${NGINX_VHOST_DIR}/extension/${DOMAIN}"
+    if run_privileged test -d "$extension_directory"; then
+        while IFS= read -r -d '' fragment; do
+            config_content+=$'\n'
+            config_content+="$(read_privileged "$fragment")"
+        done < <(run_privileged find "$extension_directory" -maxdepth 1 -type f -name '*.conf' -print0 | sort -z)
+    fi
+}
+
 if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
     printf 'DOMAIN hanya boleh berisi huruf, angka, titik, dan tanda hubung.\n' >&2
     exit 2
@@ -143,7 +158,7 @@ else
 fi
 
 config_content=''
-if config_content="$(read_privileged "$NGINX_CONFIG" 2>/dev/null)"; then
+if read_effective_nginx_config 2>/dev/null; then
     ok "Vhost Nginx dapat dibaca"
 
     if grep -Fq "server_name ${DOMAIN}" <<<"$config_content"; then

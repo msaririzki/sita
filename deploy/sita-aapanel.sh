@@ -297,6 +297,9 @@ DEPLOYMENT_STRATEGY=atomic
 RELEASE_ROOT=${PROJECT_ROOT}/.sita-release
 CURRENT_LINK=${PROJECT_ROOT}/.sita-release/current
 MANAGE_NGINX_ROOT=prompt
+# Fragment extension berisi rewrite Laravel dan proxy Reverb tanpa menimpa
+# server_name, SSL, log, atau pilihan PHP yang dikelola GUI aaPanel.
+MANAGE_NGINX_INTEGRATION=true
 RELEASE_KEEP=3
 
 RUN_DEPENDENCY_AUDIT=false

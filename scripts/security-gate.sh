@@ -294,27 +294,37 @@ check_security_headers() {
 }
 
 check_nginx_configuration() {
-    local config="$NGINX_CONFIG"
+    local config="$NGINX_CONFIG" extension_directory fragment config_content
     if [[ -z "$config" && -f deploy/aapanel-nginx.conf ]]; then config='deploy/aapanel-nginx.conf'; fi
     if [[ ! -f "$config" ]]; then warn "Konfigurasi Nginx tidak tersedia untuk pemeriksaan statis."; return; fi
-    grep -Eq 'root[[:space:]]+[^;]*/public;' "$config" && pass "Nginx document root mengarah ke public." || fail "Nginx document root harus mengarah ke public/."
-    if grep -Fq 'location ~ /\.(?!well-known).* {' "$config" || grep -Fq 'location ~ ^/(\.user.ini|\.htaccess|\.git|\.env' "$config"; then
+    config_content="$(cat "$config")"
+    # aaPanel can load SITA's application rules through extension/<domain>/*.conf
+    # while keeping its generated vhost in the GUI. Inspect the effective pair.
+    extension_directory="$(dirname "$config")/extension/$(basename "$config" .conf)"
+    if [ -d "$extension_directory" ]; then
+        while IFS= read -r -d '' fragment; do
+            config_content+=$'\n'
+            config_content+="$(cat "$fragment")"
+        done < <(find "$extension_directory" -maxdepth 1 -type f -name '*.conf' -print0 | sort -z)
+    fi
+    grep -Eq 'root[[:space:]]+[^;]*/public;' <<<"$config_content" && pass "Nginx document root mengarah ke public." || fail "Nginx document root harus mengarah ke public/."
+    if grep -Fq 'location ~ /\.(?!well-known).* {' <<<"$config_content" || grep -Fq 'location ~ ^/(\.user.ini|\.htaccess|\.git|\.env' <<<"$config_content"; then
         pass "Nginx memiliki aturan deny file sensitif/dot-file."
     else
         fail "Nginx belum memiliki aturan deny file sensitif/dot-file."
     fi
-    grep -Eq 'add_header[[:space:]]+X-Content-Type-Options[[:space:]]+"?nosniff"?' "$config" && pass "Template Nginx memiliki X-Content-Type-Options." || fail "Template Nginx belum memiliki X-Content-Type-Options."
-    grep -Eq 'add_header[[:space:]]+X-Frame-Options[[:space:]]+"?(SAMEORIGIN|DENY)"?' "$config" && pass "Template Nginx memiliki X-Frame-Options." || fail "Template Nginx belum memiliki X-Frame-Options."
-    grep -Eq 'add_header[[:space:]]+Referrer-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Referrer-Policy." || fail "Template Nginx belum memiliki Referrer-Policy."
-    grep -Eq 'add_header[[:space:]]+Permissions-Policy[[:space:]]+' "$config" && pass "Template Nginx memiliki Permissions-Policy." || fail "Template Nginx belum memiliki Permissions-Policy."
-    if grep -Eq '^[[:space:]]*listen[[:space:]]+443' "$config"; then
-        grep -Eq 'add_header[[:space:]]+Strict-Transport-Security[[:space:]]+.*always' "$config" && pass "Template Nginx HTTPS memiliki HSTS dengan always." || fail "Template Nginx HTTPS harus memiliki Strict-Transport-Security dengan always."
+    grep -Eq 'add_header[[:space:]]+X-Content-Type-Options[[:space:]]+"?nosniff"?' <<<"$config_content" && pass "Template Nginx memiliki X-Content-Type-Options." || fail "Template Nginx belum memiliki X-Content-Type-Options."
+    grep -Eq 'add_header[[:space:]]+X-Frame-Options[[:space:]]+"?(SAMEORIGIN|DENY)"?' <<<"$config_content" && pass "Template Nginx memiliki X-Frame-Options." || fail "Template Nginx belum memiliki X-Frame-Options."
+    grep -Eq 'add_header[[:space:]]+Referrer-Policy[[:space:]]+' <<<"$config_content" && pass "Template Nginx memiliki Referrer-Policy." || fail "Template Nginx belum memiliki Referrer-Policy."
+    grep -Eq 'add_header[[:space:]]+Permissions-Policy[[:space:]]+' <<<"$config_content" && pass "Template Nginx memiliki Permissions-Policy." || fail "Template Nginx belum memiliki Permissions-Policy."
+    if grep -Eq '^[[:space:]]*listen[[:space:]]+443' <<<"$config_content"; then
+        grep -Eq 'add_header[[:space:]]+Strict-Transport-Security[[:space:]]+.*always' <<<"$config_content" && pass "Template Nginx HTTPS memiliki HSTS dengan always." || fail "Template Nginx HTTPS harus memiliki HSTS dengan always."
     fi
     if [[ "$CHECK_DOCKER" != "true" ]]; then
-        grep -Fq 'location ~ ^/(app|apps)(?:/|$) {' "$config" && pass "Route proxy Reverb dibatasi pada /app dan /apps." || warn "Route proxy Reverb belum memakai batas path yang presisi."
-        grep -Eq 'proxy_read_timeout[[:space:]]+(3[0-9]{2,}|[4-9][0-9]{2,}|[1-9][0-9]{3,})' "$config" && pass "Timeout baca WebSocket memadai." || warn "Timeout baca WebSocket kurang dari 300 detik."
+        grep -Fq 'location ~ ^/(app|apps)(?:/|$) {' <<<"$config_content" && pass "Route proxy Reverb dibatasi pada /app dan /apps." || warn "Route proxy Reverb belum memakai batas path yang presisi."
+        grep -Eq 'proxy_read_timeout[[:space:]]+(3[0-9]{2,}|[4-9][0-9]{2,}|[1-9][0-9]{3,})' <<<"$config_content" && pass "Timeout baca WebSocket memadai." || warn "Timeout baca WebSocket kurang dari 300 detik."
     fi
-    grep -Eq 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|reverb:)' "$config" && pass "Proxy Reverb menuju backend internal." || warn "Proxy Reverb tidak dapat dipastikan menuju backend internal."
+    grep -Eq 'proxy_pass[[:space:]]+http://(127\.0\.0\.1|reverb:)' <<<"$config_content" && pass "Proxy Reverb menuju backend internal." || warn "Proxy Reverb tidak dapat dipastikan menuju backend internal."
 }
 
 check_docker_configuration() {

@@ -129,9 +129,9 @@ WantedBy=timers.target
 EOF
 
 run_privileged systemctl daemon-reload
-run_privileged systemctl enable --now "$REVERB_SERVICE"
-run_privileged systemctl enable --now "$QUEUE_SERVICE"
+run_privileged systemctl enable "$REVERB_SERVICE" "$QUEUE_SERVICE"
 run_privileged systemctl enable --now "$SCHEDULER_TIMER"
+run_privileged systemctl reset-failed "$REVERB_SERVICE" "$QUEUE_SERVICE"
 run_privileged systemctl restart "$REVERB_SERVICE" "$QUEUE_SERVICE"
 
 printf '\nService aktif:\n'

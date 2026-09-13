@@ -129,6 +129,21 @@ restart_runtime() {
     restart_php_fpm
 }
 
+stop_runtime_without_release() {
+    local service_slug
+    service_slug="$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')"
+    # On a first-release rollback there is no known-good Laravel tree. Do not
+    # repoint workers to the control checkout, which intentionally has no
+    # production dependencies; leave the installed units stopped instead.
+    run_privileged systemctl stop \
+        "sita-${service_slug}-reverb.service" \
+        "sita-${service_slug}-queue.service" \
+        "sita-${service_slug}-schedule.timer" >/dev/null 2>&1 || true
+    run_privileged systemctl reset-failed \
+        "sita-${service_slug}-reverb.service" \
+        "sita-${service_slug}-queue.service" >/dev/null 2>&1 || true
+}
+
 restore_previous_release() {
     [ "$ROLLING_BACK" = false ] || return
     ROLLING_BACK=true
@@ -156,15 +171,9 @@ restore_previous_release() {
     fi
 
     rm -f "$CURRENT_LINK" "${CURRENT_LINK}.next" || true
-    SERVICE_WORKING_DIR="$CONTROL_DIR" \
-        DOMAIN="$DOMAIN" \
-        PHP_BIN="$PHP_BIN" \
-        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
-        SERVICE_USER="$PHP_FPM_RUNTIME_USER" \
-        SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
-        bash "$SCRIPT_ROOT/deploy/aapanel-services.sh" || true
+    stop_runtime_without_release
     restart_php_fpm || true
-    printf '[ROLLBACK] Tidak ada release sebelumnya; konfigurasi aplikasi awal dipertahankan.\n' >&2
+    printf '[ROLLBACK] Tidak ada release sebelumnya; konfigurasi aplikasi awal dipertahankan dan service runtime dihentikan.\n' >&2
 }
 
 finish() {

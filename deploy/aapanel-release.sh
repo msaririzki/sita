@@ -58,6 +58,7 @@ DEPLOYMENT_STRATEGY="${DEPLOYMENT_STRATEGY:-in-place}"
 RELEASE_ROOT="${RELEASE_ROOT:-${APP_DIR}/.sita-release}"
 CURRENT_LINK="${CURRENT_LINK:-${RELEASE_ROOT}/current}"
 MANAGE_NGINX_ROOT="${REQUESTED_MANAGE_NGINX_ROOT:-${MANAGE_NGINX_ROOT:-prompt}}"
+MANAGE_NGINX_INTEGRATION="${MANAGE_NGINX_INTEGRATION:-true}"
 RELEASE_KEEP="${RELEASE_KEEP:-3}"
 RUN_DEPENDENCY_AUDIT="${RUN_DEPENDENCY_AUDIT:-false}"
 DEPENDENCY_AUDIT_MODE="${DEPENDENCY_AUDIT_MODE:-report}"
@@ -252,11 +253,19 @@ prepare_php_extensions() {
         bash "$PROJECT_ROOT/deploy/aapanel-php-extensions.sh"
 }
 
+prepare_nginx_integration() {
+    DOMAIN="$DOMAIN" \
+        NGINX_CONFIG="$NGINX_CONFIG" \
+        MANAGE_NGINX_INTEGRATION="$MANAGE_NGINX_INTEGRATION" \
+        bash "$PROJECT_ROOT/deploy/aapanel-nginx-integration.sh"
+}
+
 banner
 if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
-    phase '1/3' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-    phase '2/3' 'Precheck runtime dan aplikasi' doctor_environment
-    phase '3/3' 'Atomic release, gate, dan rollback otomatis' deploy_application
+    phase '1/4' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
+    phase '2/4' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+    phase '3/4' 'Precheck runtime dan aplikasi' doctor_environment
+    phase '4/4' 'Atomic release, gate, dan rollback otomatis' deploy_application
     printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
     printf 'Log tersimpan di: %s\n' "$LOG_FILE"
     exit 0
@@ -264,24 +273,26 @@ fi
 
 if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '1/6' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
+        phase '1/7' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
+        phase '2/7' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
+        phase '3/7' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+        phase '4/7' 'Precheck runtime dan aplikasi' doctor_environment
+    else
+        phase '1/6' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
         phase '2/6' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
         phase '3/6' 'Precheck runtime dan aplikasi' doctor_environment
-    else
-        phase '1/5' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-        phase '2/5' 'Precheck runtime dan aplikasi' doctor_environment
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '4/6' 'Deployment awal dan pemasangan service runtime' deploy_application
+        phase '5/7' 'Deployment awal dan pemasangan service runtime' deploy_application
     else
-        phase '3/5' 'Deployment aplikasi' deploy_application
+        phase '4/6' 'Deployment aplikasi' deploy_application
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
+        phase '6/7' 'Validasi sinkronisasi pascadeploy' sync_environment
+        phase '7/7' 'Security gate pascadeploy' security_gate
+    else
         phase '5/6' 'Validasi sinkronisasi pascadeploy' sync_environment
         phase '6/6' 'Security gate pascadeploy' security_gate
-    else
-        phase '4/5' 'Validasi sinkronisasi pascadeploy' sync_environment
-        phase '5/5' 'Security gate pascadeploy' security_gate
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
         printf '%bDEPLOY AWAL DINYATAKAN SIAP%b\n' "$green" "$reset"
