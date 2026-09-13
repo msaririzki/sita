@@ -66,8 +66,16 @@ printf 'Project root: %s\n\n' "$PROJECT_ROOT"
 
 need_cmd "$PHP_BIN"
 need_cmd "$COMPOSER_BIN"
-need_cmd "$NODE_BIN"
-need_cmd "$NPM_BIN"
+if command -v "$NODE_BIN" >/dev/null 2>&1; then
+    ok "Command tersedia: $NODE_BIN"
+else
+    fail "Node.js belum tersedia. Pasang Node.js 22 LTS sekali melalui aaPanel App Store, lalu pastikan bin Node masuk PATH operator."
+fi
+if command -v "$NPM_BIN" >/dev/null 2>&1; then
+    ok "Command tersedia: $NPM_BIN"
+else
+    fail "npm belum tersedia. npm akan tersedia bersama Node.js 22 LTS aaPanel."
+fi
 need_cmd git
 need_cmd bash
 
