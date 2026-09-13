@@ -10,12 +10,20 @@ PHP_BIN="${PHP_BIN:-php}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}"
+HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-auto}"
+ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
+ORIGIN_PROBE_HTTP_PORT="${ORIGIN_PROBE_HTTP_PORT:-80}"
+EDGE_ACCESS_POLICY="${EDGE_ACCESS_POLICY:-warn}"
 CHECK_SERVICES="${CHECK_SERVICES:-true}"
 CHECK_WEBSOCKET="${CHECK_WEBSOCKET:-true}"
 SERVICE_READY_ATTEMPTS="${SERVICE_READY_ATTEMPTS:-10}"
 SERVICE_READY_DELAY_SECONDS="${SERVICE_READY_DELAY_SECONDS:-1}"
 
 FAILED=0
+HTTP_PROBE_BASE_URL=''
+HTTP_PROBE_CURL_ARGS=()
+HTTP_PROBE_EFFECTIVE_MODE=''
 
 ok() {
     printf '[OK] %s\n' "$1"
@@ -113,16 +121,117 @@ check_runtime_write_access() {
     done
 }
 
-check_health() {
-    if [ -z "$HEALTHCHECK_URL" ]; then
-        fail "HEALTHCHECK_URL wajib untuk integration gate"
+http_status() {
+    curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "${HTTP_PROBE_CURL_ARGS[@]}" "$1" 2>/dev/null || true
+}
+
+configure_public_probe() {
+    HTTP_PROBE_BASE_URL="${PUBLIC_BASE_URL%/}"
+    HTTP_PROBE_CURL_ARGS=()
+    HTTP_PROBE_EFFECTIVE_MODE='public'
+}
+
+configure_origin_https_probe() {
+    local port=443
+
+    [[ "$PUBLIC_BASE_URL" = https://* ]] || return 1
+    if [[ "$PUBLIC_BASE_URL" =~ ^https://[^/:]+:([0-9]+) ]]; then
+        port="${BASH_REMATCH[1]}"
+    fi
+    HTTP_PROBE_BASE_URL="${PUBLIC_BASE_URL%/}"
+    HTTP_PROBE_CURL_ARGS=(--resolve "${DOMAIN}:${port}:${ORIGIN_PROBE_ADDRESS}")
+    HTTP_PROBE_EFFECTIVE_MODE='origin-https'
+}
+
+configure_origin_http_probe() {
+    if [[ ! "$ORIGIN_PROBE_HTTP_PORT" =~ ^[0-9]+$ ]] || [ "$ORIGIN_PROBE_HTTP_PORT" -lt 1 ] || [ "$ORIGIN_PROBE_HTTP_PORT" -gt 65535 ]; then
+        return 1
+    fi
+    HTTP_PROBE_BASE_URL="http://${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT}"
+    HTTP_PROBE_CURL_ARGS=(-H "Host: ${DOMAIN}")
+    HTTP_PROBE_EFFECTIVE_MODE='origin-http'
+}
+
+configure_http_probe() {
+    local status
+
+    if [ -z "$PUBLIC_BASE_URL" ] || [[ ! "$PUBLIC_BASE_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/.*)?$ ]]; then
+        fail "PUBLIC_BASE_URL tidak valid untuk Integration Gate: ${PUBLIC_BASE_URL:-kosong}"
         return
     fi
 
-    if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
-        ok "Healthcheck HTTP berhasil: $HEALTHCHECK_URL"
+    case "$HTTP_PROBE_MODE" in
+        public)
+            configure_public_probe
+            ok "Probe Integration Gate memakai jalur publik"
+            ;;
+        origin|origin-https)
+            if ! configure_origin_https_probe; then
+                fail "HTTP_PROBE_MODE=origin-https membutuhkan PUBLIC_BASE_URL HTTPS"
+                return
+            fi
+            ok "Probe Integration Gate memakai origin HTTPS ${ORIGIN_PROBE_ADDRESS} dengan TLS/SNI ${DOMAIN}"
+            ;;
+        origin-http)
+            if ! configure_origin_http_probe; then
+                fail "HTTP_PROBE_MODE=origin-http membutuhkan port origin 1-65535"
+                return
+            fi
+            ok "Probe Integration Gate memakai origin HTTP ${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT}; cocok untuk Cloudflare Tunnel"
+            ;;
+        auto)
+            if configure_origin_https_probe; then
+                status="$(http_status "${HTTP_PROBE_BASE_URL}/up")"
+                if [ "$status" = '200' ]; then
+                    ok "Probe otomatis memilih origin HTTPS ${ORIGIN_PROBE_ADDRESS} dengan TLS/SNI ${DOMAIN}"
+                    return
+                fi
+            fi
+            if configure_origin_http_probe; then
+                status="$(http_status "${HTTP_PROBE_BASE_URL}/up")"
+                if [ "$status" = '200' ]; then
+                    ok "Probe otomatis memilih origin HTTP ${ORIGIN_PROBE_ADDRESS}:${ORIGIN_PROBE_HTTP_PORT}; cocok untuk Cloudflare Tunnel"
+                    return
+                fi
+            fi
+            configure_public_probe
+            ok "Probe otomatis memakai jalur publik karena origin lokal belum merespons"
+            ;;
+        *)
+            fail "HTTP_PROBE_MODE harus auto, public, origin-https, atau origin-http"
+            ;;
+    esac
+}
+
+check_public_edge() {
+    local status
+
+    [ "$HTTP_PROBE_EFFECTIVE_MODE" != 'public' ] || return
+    case "$EDGE_ACCESS_POLICY" in
+        off) return ;;
+        warn|required) ;;
+        *) fail "EDGE_ACCESS_POLICY harus off, warn, atau required"; return ;;
+    esac
+    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
+    if [ "$status" = '200' ]; then
+        ok "Healthcheck jalur publik tersedia"
+    elif [ "$EDGE_ACCESS_POLICY" = 'required' ]; then
+        fail "Healthcheck jalur publik gagal dengan HTTP ${status:-tanpa-status}"
     else
-        fail "Healthcheck HTTP gagal: $HEALTHCHECK_URL"
+        warn "Healthcheck jalur publik belum tersedia (HTTP ${status:-tanpa-status}); aplikasi origin tetap diuji melalui ${HTTP_PROBE_EFFECTIVE_MODE}"
+    fi
+}
+
+check_health() {
+    if [ -z "$HTTP_PROBE_BASE_URL" ]; then
+        fail "Probe HTTP belum dapat dikonfigurasi"
+        return
+    fi
+
+    if [ "$(http_status "${HTTP_PROBE_BASE_URL}/up")" = '200' ]; then
+        ok "Healthcheck HTTP berhasil melalui ${HTTP_PROBE_EFFECTIVE_MODE}"
+    else
+        fail "Healthcheck HTTP gagal melalui ${HTTP_PROBE_EFFECTIVE_MODE}"
     fi
 }
 
@@ -130,7 +239,7 @@ check_public_storage() {
     local marker storage_url response
 
     marker="sita-deploy-gate-${RANDOM}-${RANDOM}.txt"
-    storage_url="${HEALTHCHECK_URL%/up}/storage/${marker}"
+    storage_url="${HTTP_PROBE_BASE_URL}/storage/${marker}"
 
     if [ "$(id -un)" = "$PHP_FPM_RUNTIME_USER" ]; then
         printf '%s' "$marker" > "storage/app/public/${marker}"
@@ -141,7 +250,7 @@ check_public_storage() {
         return
     fi
 
-    response="$(curl -fsS "$storage_url" 2>/dev/null || true)"
+    response="$(curl -kfsS --max-time 10 "${HTTP_PROBE_CURL_ARGS[@]}" "$storage_url" 2>/dev/null || true)"
     rm -f "storage/app/public/${marker}"
 
     if [ "$response" = "$marker" ]; then
@@ -173,7 +282,7 @@ check_frontend_reverb_bundle() {
 }
 
 check_websocket_upgrade() {
-    local app_key host port scheme protocol url status curl_exit
+    local app_key host port scheme protocol url status curl_exit websocket_args=()
 
     app_key="$(env_value REVERB_APP_KEY)"
     host="$(env_value REVERB_HOST)"
@@ -193,14 +302,20 @@ check_websocket_upgrade() {
             ;;
     esac
 
-    if { [ "$protocol" = "https" ] && [ "$port" = "443" ]; } || { [ "$protocol" = "http" ] && [ "$port" = "80" ]; }; then
+    if [ "$HTTP_PROBE_EFFECTIVE_MODE" = 'origin-http' ]; then
+        url="${HTTP_PROBE_BASE_URL}/app/${app_key}?protocol=7&client=sita-deploy-gate&version=1.0&flash=false"
+        websocket_args=(-H "Host: ${host}")
+    elif { [ "$protocol" = "https" ] && [ "$port" = "443" ]; } || { [ "$protocol" = "http" ] && [ "$port" = "80" ]; }; then
         url="${protocol}://${host}/app/${app_key}?protocol=7&client=sita-deploy-gate&version=1.0&flash=false"
+        websocket_args=("${HTTP_PROBE_CURL_ARGS[@]}")
     else
         url="${protocol}://${host}:${port}/app/${app_key}?protocol=7&client=sita-deploy-gate&version=1.0&flash=false"
+        websocket_args=("${HTTP_PROBE_CURL_ARGS[@]}")
     fi
 
     set +e
-    status="$(curl -sS -o /dev/null --max-time 5 --http1.1 -w '%{http_code}' \
+    status="$(curl -ksS -o /dev/null --max-time 5 --http1.1 -w '%{http_code}' \
+        "${websocket_args[@]}" \
         -H 'Connection: Upgrade' \
         -H 'Upgrade: websocket' \
         -H 'Sec-WebSocket-Version: 13' \
@@ -234,8 +349,10 @@ fi
 
 if [ -f .env ]; then
     check_runtime_write_access
+    configure_http_probe
     check_health
     check_public_storage
+    check_public_edge
 
     if [ "$CHECK_SERVICES" = "true" ]; then
         if command -v systemctl >/dev/null 2>&1; then

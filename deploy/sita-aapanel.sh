@@ -275,6 +275,13 @@ PHP_FPM_SOCKET=/tmp/php-cgi-84.sock
 NGINX_CONFIG=/www/server/panel/vhost/nginx/${domain}.conf
 HEALTHCHECK_URL=${public_url}/up
 PUBLIC_BASE_URL=${public_url}
+HTTP_PROBE_MODE=auto
+ORIGIN_PROBE_ADDRESS=127.0.0.1
+ORIGIN_PROBE_HTTP_PORT=80
+CHECK_EDGE_HTTP=false
+# Jalur publik Cloudflare/Tunnel dicatat bila belum siap; ubah menjadi required
+# jika akses publik harus sehat sebelum candidate dapat diaktifkan.
+EDGE_ACCESS_POLICY=warn
 
 # Jika migration ditemukan saat Release, konsol menampilkan daftar lalu meminta
 # Y untuk membuat backup otomatis dan menerapkan migration.
