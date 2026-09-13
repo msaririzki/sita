@@ -7,6 +7,11 @@ set -Eeuo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION="${1:-release}"
 PROFILE_FILE="${AAPANEL_PROFILE_FILE:-${PROJECT_ROOT}/deploy/aapanel-profile.env}"
+# A profile supplies safe defaults for ordinary console use. Keep explicit
+# operator overrides so an approved non-interactive maintenance run can select
+# the migration and first-vhost-root policy without editing the profile.
+REQUESTED_MIGRATION_MODE="${MIGRATION_MODE-}"
+REQUESTED_MANAGE_NGINX_ROOT="${MANAGE_NGINX_ROOT-}"
 
 case "$ACTION" in
     bootstrap|check|release) ;;
@@ -46,12 +51,12 @@ ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
 ORIGIN_PROBE_HTTP_PORT="${ORIGIN_PROBE_HTTP_PORT:-80}"
 CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-false}"
-MIGRATION_MODE="${MIGRATION_MODE:-prompt}"
+MIGRATION_MODE="${REQUESTED_MIGRATION_MODE:-${MIGRATION_MODE:-prompt}}"
 DB_BACKUP_DIR="${DB_BACKUP_DIR:-/var/backups/sita}"
 DEPLOYMENT_STRATEGY="${DEPLOYMENT_STRATEGY:-in-place}"
 RELEASE_ROOT="${RELEASE_ROOT:-${APP_DIR}/.sita-release}"
 CURRENT_LINK="${CURRENT_LINK:-${RELEASE_ROOT}/current}"
-MANAGE_NGINX_ROOT="${MANAGE_NGINX_ROOT:-prompt}"
+MANAGE_NGINX_ROOT="${REQUESTED_MANAGE_NGINX_ROOT:-${MANAGE_NGINX_ROOT:-prompt}}"
 RELEASE_KEEP="${RELEASE_KEEP:-3}"
 RUN_DEPENDENCY_AUDIT="${RUN_DEPENDENCY_AUDIT:-false}"
 DEPENDENCY_AUDIT_MODE="${DEPENDENCY_AUDIT_MODE:-report}"
