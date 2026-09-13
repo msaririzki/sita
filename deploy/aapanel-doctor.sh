@@ -206,20 +206,26 @@ for dir in storage bootstrap/cache; do
     fi
 done
 
-if [ -d vendor ] && [ -f artisan ] && [ -f .env ]; then
+if [ -f vendor/autoload.php ] && [ -f artisan ] && [ -f .env ]; then
     if "$PHP_BIN" artisan --version >/dev/null 2>&1; then
         ok "Artisan bisa dijalankan"
+        ARTISAN_READY=true
     else
         fail "Artisan gagal dijalankan. Cek vendor, .env, dan APP_KEY."
+        ARTISAN_READY=false
     fi
 
-    if "$PHP_BIN" artisan migrate:status --no-interaction >/dev/null 2>&1; then
-        ok "Koneksi database dan tabel migrations bisa diakses"
+    if [ "$ARTISAN_READY" = true ]; then
+        if "$PHP_BIN" artisan migrate:status --no-interaction >/dev/null 2>&1; then
+            ok "Koneksi database dan tabel migrations bisa diakses"
+        else
+            fail "Database belum bisa diakses oleh Laravel. Cek DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD, dan pdo_mysql."
+        fi
     else
-        fail "Database belum bisa diakses oleh Laravel. Cek DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD, dan pdo_mysql."
+        warn "Lewati cek database karena Artisan belum dapat dijalankan."
     fi
 else
-    warn "Lewati cek Artisan/database karena vendor, artisan, atau .env belum lengkap."
+    warn "Dependency PHP belum terpasang; Bootstrap akan menjalankan Composer. Cek Artisan/database ditunda sampai vendor/autoload.php tersedia."
 fi
 
 if [ "$CHECK_SERVICES" = "true" ]; then
