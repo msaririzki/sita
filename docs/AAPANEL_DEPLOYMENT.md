@@ -47,11 +47,13 @@ Struktur folder:
 └── package-lock.json
 ```
 
-Document root aaPanel harus diarahkan ke:
+Untuk deployment `in-place`, document root aaPanel harus diarahkan ke:
 
 ```text
 /www/wwwroot/sita.kampus.ac.id/public
 ```
+
+Untuk deployment `atomic` pada situs baru, root bawaan aaPanel `/www/wwwroot/sita.kampus.ac.id` juga diterima. Saat aktivasi pertama, runner memverifikasinya lalu mengalihkan hanya directive root ke `CURRENT_LINK/public` dengan backup dan uji sintaks Nginx.
 
 Frontend dan backend tidak perlu dipisah subdomain karena Inertia menyajikan React dari Laravel yang sama.
 
@@ -68,7 +70,7 @@ Frontend dan backend tidak perlu dipisah subdomain karena Inertia menyajikan Rea
 ## Setup Pertama
 
 1. Buat website di aaPanel dengan domain `sita.kampus.ac.id`.
-2. Set document root ke `/www/wwwroot/sita.kampus.ac.id/public`.
+2. Untuk `in-place`, set document root ke `/www/wwwroot/sita.kampus.ac.id/public`. Untuk `atomic`, root bawaan boleh dibiarkan sampai runner mengalihkannya pada aktivasi pertama.
 3. Clone repo ke `/www/wwwroot/sita.kampus.ac.id`.
 4. Buat database dan user MySQL/MariaDB dari aaPanel.
 5. Salin env production:
@@ -126,7 +128,7 @@ Jangan commit `.env`.
 
 Pembuatan situs lewat menu **Website > Add site** adalah langkah satu kali. Langkah ini membuat entri situs di GUI aaPanel, sehingga status, konfigurasi, access log, error log, PHP version, SSL, dan batas resource dapat dipantau oleh operator kampus. Skrip `deploy/aapanel-deploy.sh` sengaja tidak menulis database internal aaPanel dan tidak membuat entri situs secara otomatis; operasi itu tidak memiliki API stabil dan dapat merusak konfigurasi yang dikelola panel.
 
-Sesudah situs dibuat, buka tombol **Conf** pada entri tersebut dan terapkan konfigurasi dari `deploy/aapanel-nginx.conf.template` dengan `server_name` serta jalur aplikasi yang sesuai. Pastikan `root` tetap mengarah ke `<path-aplikasi>/public`. Konfigurasi standar hasil **Add site** memakai folder aplikasi sebagai root dan akan menghasilkan 403/404 pada Laravel. Uji konfigurasi sebelum disimpan:
+Sesudah situs dibuat, buka tombol **Conf** pada entri tersebut dan terapkan konfigurasi dari `deploy/aapanel-nginx.conf.template` dengan `server_name` serta jalur aplikasi yang sesuai. Untuk `in-place`, root harus mengarah ke `<path-aplikasi>/public`. Untuk `atomic`, root bawaan `<path-aplikasi>` boleh dipertahankan sampai runner memindahkannya ke `current/public`. Uji konfigurasi sebelum disimpan:
 
 ```bash
 /www/server/nginx/sbin/nginx -t
@@ -180,7 +182,7 @@ Runner menampilkan fase yang sedang berjalan, menghentikan proses pada kegagalan
 
 Profile dapat memakai `DEPLOYMENT_STRATEGY=atomic`. Source Git tetap berada pada `APP_DIR` sebagai control checkout, sedangkan release baru dibangun di `RELEASE_ROOT/releases/<waktu>-<commit>`. File `.env` dan `storage` berada di `RELEASE_ROOT/shared`, lalu setiap release menggunakannya melalui symlink. Nginx, Reverb, queue, dan scheduler memakai `CURRENT_LINK`; pertukaran symlink itu atomik.
 
-Pada aktivasi pertama, skrip meminta konfirmasi untuk mengganti hanya baris document root vhost dari `APP_DIR/public` ke `CURRENT_LINK/public`. Konfigurasi asli disalin ke `/var/backups/sita/nginx/`, diuji dengan `nginx -t`, dan hanya kemudian di-reload. Pengaturan SSL, domain, log, PHP version, dan konfigurasi GUI aaPanel lain tetap dipertahankan.
+Pada aktivasi pertama, skrip meminta konfirmasi untuk mengganti hanya baris document root vhost dari `APP_DIR` atau `APP_DIR/public` ke `CURRENT_LINK/public`. Konfigurasi asli disalin ke `/var/backups/sita/nginx/`, diuji dengan `nginx -t`, dan hanya kemudian di-reload. Pengaturan SSL, domain, log, PHP version, dan konfigurasi GUI aaPanel lain tetap dipertahankan.
 
 Candidate dibangun dan diperiksa sebelum symlink dipindahkan. Bila integration gate atau security gate pascaaktivasi gagal, `current` dikembalikan ke release sebelumnya dan service runtime direstart. Default `RELEASE_KEEP=3` menyimpan tiga release terbaru. Atomic rollback hanya berlaku untuk perubahan kode tanpa migration tertunda. Jika ada migration baru, release diblokir sebelum aktivasi karena rollback kode tidak menjamin skema database lama aman. Terapkan migration melalui migration gate terkontrol dan gunakan migration yang backward-compatible sebelum menjalankan atomic release.
 

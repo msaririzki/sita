@@ -57,26 +57,15 @@ Di **Website > Add site**:
 - Database: jangan dibuat otomatis dari form ini, karena dibuat pada langkah berikut;
 - SSL aaPanel: jangan diaktifkan untuk topologi Tunnel ini.
 
-Buat direktori source terpisah dari document root bawaan agar source dan konfigurasi aaPanel tetap mudah ditelusuri. Pada lab ini gunakan:
+Gunakan path bawaan aaPanel sebagai control checkout. Ini adalah pola paling mudah dikenali oleh administrator kampus:
 
 ```text
-APP_DIR=/www/wwwroot/sita-aapanel.ikydev.com/sita
+APP_DIR=/www/wwwroot/sita-aapanel.ikydev.com
 ```
 
-Setelah source sudah di-clone pada langkah 4, buka **Website > sita-aapanel.ikydev.com > Config** dan ubah **hanya** baris root menjadi:
+Jangan mengubah baris `root` dari GUI pada tahap ini. Situs baru aaPanel akan memakai root awal `/www/wwwroot/sita-aapanel.ikydev.com;`. Saat atomic release pertama, console mengenali root bawaan tersebut, meminta persetujuan, membuat backup vhost di `/var/backups/sita/nginx/`, menguji sintaks Nginx, lalu menggantinya menjadi symlink release `current/public`.
 
-```nginx
-root /www/wwwroot/sita-aapanel.ikydev.com/sita/public;
-```
-
-Pertahankan `server_name`, `include enable-php-84.conf`, log, dan baris lain yang dibuat aaPanel. Simpan konfigurasi dan jalankan uji Nginx melalui tombol aaPanel atau:
-
-```bash
-sudo /www/server/nginx/sbin/nginx -t
-sudo /etc/init.d/nginx reload
-```
-
-Saat atomic release pertama, console akan meminta persetujuan untuk mengubah root ini lagi ke symlink release `current/public`. Ia membuat backup vhost lebih dahulu di `/var/backups/sita/nginx/`.
+Path tetap fleksibel. Bila administrator menentukan path lain, misalnya `/www/wwwroot/webkampus/sita`, clone source di path itu dan pastikan root vhost awal sama dengan `APP_DIR` atau `APP_DIR/public`. Console mengenali kedua bentuk tersebut sebelum mengalihkan ke `current/public`.
 
 ### 3.4 Buat database
 
@@ -107,17 +96,22 @@ Node harus minimal `20.19` atau `22.12`; gunakan Node 22 LTS. Bila Node dari aaP
 Login terminal sebagai pengguna deploy, lalu jalankan perintah berikut. Ganti `BRANCH` hanya setelah branch tersebut sudah disetujui sebagai branch rilis.
 
 ```bash
-export APP_DIR=/www/wwwroot/sita-aapanel.ikydev.com/sita
+export APP_DIR=/www/wwwroot/sita-aapanel.ikydev.com
 export BRANCH=codex/dependency-audit-p1
-sudo install -d -m 750 -o "$USER" -g www "$APP_DIR"
-git clone --branch "$BRANCH" https://github.com/msaririzki/sita.git "$APP_DIR"
+sudo chown "$USER":www "$APP_DIR"
+sudo chmod 750 "$APP_DIR"
+cd "$APP_DIR"
+git init
+git remote add origin https://github.com/msaririzki/sita.git
+git fetch --depth=1 origin "$BRANCH"
+git checkout -b "$BRANCH" FETCH_HEAD
 cd "$APP_DIR"
 cp .env.example .env
 chmod 640 .env
 chgrp www .env
 ```
 
-Jika `git clone` menolak karena direktori sudah berisi file, jangan hapus isi secara massal. Periksa path dengan `pwd` dan clone ke folder `sita` seperti contoh di atas, bukan ke document root bawaan aaPanel.
+Direktori situs baru aaPanel lazimnya sudah berisi `.user.ini`, `.htaccess`, atau halaman error. Perintah di atas membuat Git checkout tanpa menghapus file aaPanel tersebut. Jika Git melaporkan konflik nama file, berhenti, periksa `git status --short` dan `pwd`; jangan menghapus isi direktori secara massal.
 
 Edit `.env` memakai editor lokal server, misalnya `nano .env`. Nilai penting untuk lab Tunnel adalah berikut. Isi placeholder database dan mail sendiri.
 
@@ -198,8 +192,8 @@ CHECK_EDGE_HTTP=true
 MIGRATION_MODE=prompt
 DB_BACKUP_DIR=/var/backups/sita
 DEPLOYMENT_STRATEGY=atomic
-RELEASE_ROOT=/www/wwwroot/sita-aapanel.ikydev.com/sita/.sita-release
-CURRENT_LINK=/www/wwwroot/sita-aapanel.ikydev.com/sita/.sita-release/current
+RELEASE_ROOT=/www/wwwroot/sita-aapanel.ikydev.com/.sita-release
+CURRENT_LINK=/www/wwwroot/sita-aapanel.ikydev.com/.sita-release/current
 MANAGE_NGINX_ROOT=prompt
 RELEASE_KEEP=3
 ```
@@ -223,7 +217,7 @@ Tunnel sehat hanya membuktikan connector terhubung ke Cloudflare. Ia tidak membu
 Sebelum deploy, cek tanpa perubahan:
 
 ```bash
-cd /www/wwwroot/sita-aapanel.ikydev.com/sita
+cd /www/wwwroot/sita-aapanel.ikydev.com
 bash deploy/sita.sh aapanel check
 ```
 
@@ -264,7 +258,7 @@ Di aaPanel, pantau access log, error log, penggunaan CPU/RAM, status database, d
 Untuk update kode yang sudah ada di branch aktif:
 
 ```bash
-cd /www/wwwroot/sita-aapanel.ikydev.com/sita
+cd /www/wwwroot/sita-aapanel.ikydev.com
 bash deploy/sita.sh aapanel release
 ```
 
@@ -295,7 +289,7 @@ Jika release membawa migration, selesaikan melalui migration gate dan gunakan ba
 
 - [ ] Nginx, PHP 8.4, database, dan Node 22 LTS tersedia.
 - [ ] Semua extension PHP pada bagian 3.2 aktif.
-- [ ] Website memakai PHP 8.4 dan root awal mengarah ke `APP_DIR/public`.
+- [ ] Website memakai PHP 8.4 dan root awal masih root bawaan aaPanel atau `APP_DIR/public`; console akan memvalidasi lalu mengalihkan root pada atomic release pertama.
 - [ ] `.env` production ada, mode `640`, dan tidak tercatat Git.
 - [ ] Database/user dapat diakses Laravel.
 - [ ] Tunnel mengarah ke `127.0.0.1:80`; panel aaPanel tetap privat.

@@ -168,8 +168,9 @@ DB_BACKUP_DIR=/var/backups/sita
 # Kompatibilitas perintah lama. Tetap false; gunakan MIGRATION_MODE di atas.
 RUN_MIGRATIONS=false
 
-# Pilih in-place untuk pola lama, atau atomic untuk release + rollback kode.
-DEPLOYMENT_STRATEGY=in-place
+# Atomic adalah default untuk server baru: candidate diuji dahulu, lalu root
+# aaPanel dipindahkan ke symlink current dengan backup vhost dan rollback kode.
+DEPLOYMENT_STRATEGY=atomic
 RELEASE_ROOT=${PROJECT_ROOT}/.sita-release
 CURRENT_LINK=${PROJECT_ROOT}/.sita-release/current
 MANAGE_NGINX_ROOT=prompt
@@ -341,18 +342,18 @@ show_tutorial() {
 
     printf '%bTahap 0 - Siapkan melalui GUI aaPanel (sekali per server)%b\n' "$bold$blue" "$reset"
     printf '  1. Instal Nginx dan PHP 8.4 dari App Store aaPanel.\n'
-    printf '  2. Tambahkan Website dengan domain/IP dan arahkan path ke folder proyek.\n'
+    printf '  2. Tambahkan Website dengan domain/IP memakai path bawaan aaPanel.\n'
     printf '  3. Buat database serta pengguna database khusus SITA.\n'
-    printf '  4. Atur root Nginx ke folder public dan gunakan socket PHP 8.4 yang benar.\n'
+    printf '  4. Biarkan root bawaan; atomic release akan mengalihkan ke current/public dengan backup.\n'
     printf '  5. Untuk domain publik, aktifkan SSL setelah DNS mengarah ke server.\n\n'
 
     printf '%bTahap 1 - Siapkan kode dan rahasia aplikasi%b\n' "$bold$blue" "$reset"
-    printf '  1. Clone repository ke folder tujuan, misalnya /www/wwwroot/webkampus/sita.\n'
+    printf '  1. Clone repository ke path website aaPanel, misalnya /www/wwwroot/sita.kampus.ac.id.\n'
     printf '  2. Buat .env dari .env.example dan isi APP_KEY, database, mail, dan Reverb.\n'
     printf '  3. Jangan menaruh password atau secret pada profile server maupun Git.\n\n'
 
     printf '%bTahap 2 - Jalankan konsol%b\n' "$bold$blue" "$reset"
-    printf '  cd /lokasi/proyek/sita\n'
+    printf '  cd /www/wwwroot/sita.kampus.ac.id\n'
     printf '  bash deploy/sita.sh\n\n'
 
     printf '%bUrutan menu yang direkomendasikan%b\n' "$bold$blue" "$reset"

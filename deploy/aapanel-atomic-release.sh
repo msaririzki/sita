@@ -337,16 +337,26 @@ assert_no_pending_migrations() {
 }
 
 ensure_nginx_points_to_current() {
-    local expected old_root content updated answer backup_dir
+    local expected old_root content updated answer backup_dir candidate_root
     expected="root ${CURRENT_LINK}/public;"
-    old_root="root ${CONTROL_DIR}/public;"
     content="$(read_privileged "$NGINX_CONFIG")"
     if grep -Fq "$expected" <<<"$content"; then
         printf 'Nginx sudah mengarah ke symlink current.\n'
         return
     fi
-    if ! grep -Fq "$old_root" <<<"$content"; then
-        printf 'Root Nginx tidak sesuai control checkout ataupun current release. Perbaiki melalui GUI aaPanel terlebih dahulu.\n' >&2
+
+    # A new aaPanel site normally starts with root equal to its site directory.
+    # A previously prepared site already uses CONTROL_DIR/public. Support both
+    # forms so the operator does not have to edit a vhost just to start SITA.
+    old_root=''
+    for candidate_root in "root ${CONTROL_DIR}/public;" "root ${CONTROL_DIR};"; do
+        if grep -Fq "$candidate_root" <<<"$content"; then
+            old_root="$candidate_root"
+            break
+        fi
+    done
+    if [ -z "$old_root" ]; then
+        printf 'Root Nginx bukan root aaPanel bawaan, control checkout, atau current release. Periksa vhost melalui GUI aaPanel.\n' >&2
         exit 1
     fi
 
