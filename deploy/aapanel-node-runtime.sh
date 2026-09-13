@@ -75,6 +75,7 @@ run_privileged ln -sfn "$target_directory" "${INSTALL_ROOT}/current"
 
 node_binary="${INSTALL_ROOT}/current/bin/node"
 npm_binary="${INSTALL_ROOT}/current/bin/npm"
+export PATH="${INSTALL_ROOT}/current/bin:${PATH}"
 "$node_binary" -e '
     const [major, minor] = process.versions.node.split(".").map(Number);
     process.exit(major === 22 && minor >= 12 ? 0 : 1);
