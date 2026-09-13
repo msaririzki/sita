@@ -97,7 +97,7 @@ Setelah komponen GUI tersedia, operator cukup clone source yang telah disetujui 
 
 ```bash
 cd /www/wwwroot/sita-aapanel.ikydev.com
-git clone --branch codex/dependency-audit-p1 --single-branch https://github.com/msaririzki/sita.git sita
+git clone -b codex/dependency-audit-p1 --depth=1 https://github.com/msaririzki/sita.git sita
 cd sita
 bash deploy/sita.sh
 ```
