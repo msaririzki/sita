@@ -117,6 +117,8 @@ restart_runtime() {
     SERVICE_WORKING_DIR="$CURRENT_LINK" \
         DOMAIN="$DOMAIN" \
         PHP_BIN="$PHP_BIN" \
+        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        SERVICE_USER="$PHP_FPM_RUNTIME_USER" \
         SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
         bash "$SCRIPT_ROOT/deploy/aapanel-services.sh"
     restart_php_fpm
@@ -152,6 +154,8 @@ restore_previous_release() {
     SERVICE_WORKING_DIR="$CONTROL_DIR" \
         DOMAIN="$DOMAIN" \
         PHP_BIN="$PHP_BIN" \
+        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        SERVICE_USER="$PHP_FPM_RUNTIME_USER" \
         SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
         bash "$SCRIPT_ROOT/deploy/aapanel-services.sh" || true
     restart_php_fpm || true

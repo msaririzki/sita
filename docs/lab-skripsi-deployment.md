@@ -477,3 +477,9 @@ Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tet
 - **Perbaikan:** alur awal sekarang adalah GUI aaPanel untuk infrastruktur, `git clone` source SITA ke subfolder Website, lalu `bash deploy/sita.sh`. Menu `[1] Inisialisasi aplikasi` di dalam repository membuat `.env`, profile, dan key acak tanpa mengungkap secret. Tidak ada lagi installer raw terpisah.
 - **Kompatibilitas aaPanel:** profile mencatat `APP_DIR` untuk checkout source dan `SITE_ROOT` untuk root Website parent bawaan aaPanel. Atomic runner hanya menerima root yang cocok dengan `SITE_ROOT`, checkout, atau release saat ini; sebelum mengubahnya ia tetap membuat backup vhost dan menjalankan `nginx -t`.
 - **Manfaat:** prosedur lebih mudah direplikasi, versi console selalu sama dengan branch aplikasi yang diklon, dan aaPanel tetap dapat menampilkan serta memantau Website pada GUI tanpa source perlu ditempatkan langsung di folder root panel.
+
+### E-56 - Kompatibilitas operator root tanpa service aplikasi berhak root
+
+- **Temuan:** terminal server kampus dijalankan sebagai `root`. Default lama pada pembuat unit systemd mengambil `id -un`, sehingga Reverb, queue, dan scheduler dapat terbentuk dengan `User=root` jika deployment dipanggil dari terminal tersebut.
+- **Perbaikan:** Deployment Console kini meneruskan `PHP_FPM_RUNTIME_USER` dan group runtime ke pembuat service. Default service adalah `www:www`; root hanya dipakai untuk menulis unit systemd, reload PHP-FPM, mengubah vhost, serta mengatur permission. Script tetap mendukung akun deploy non-root melalui `sudo`.
+- **Validasi statis:** seluruh skrip `deploy/*.sh` lulus `bash -n`. Penerapan unit pada lab dilakukan pada Bootstrap berikutnya dan harus diverifikasi melalui `systemctl cat sita-<domain>-reverb.service` untuk membuktikan `User=www`.

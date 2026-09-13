@@ -12,6 +12,8 @@ Dokumen ini untuk VM laboratorium. Jangan menjalankan eksperimen atau perubahan 
 
 Jangan membuat website atau user database dengan memanipulasi database internal aaPanel. Jangan menjalankan `chmod -R 777`, `migrate:fresh`, `db:seed`, atau `truncate` pada data SITA yang dipakai.
 
+Console dapat dijalankan oleh akun deploy yang memiliki `sudo` atau langsung sebagai `root`, seperti pola server kampus. Hak root hanya digunakan untuk vhost, PHP-FPM, permission, dan unit systemd. Reverb, queue, dan scheduler tetap dijalankan sebagai user PHP-FPM (`www` secara default), bukan sebagai root.
+
 ## 2. Topologi laboratorium ini
 
 - Panel aaPanel: akses melalui jaringan privat/Tailscale.

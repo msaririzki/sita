@@ -16,6 +16,7 @@ RUN_QUEUE_RESTART="${RUN_QUEUE_RESTART:-true}"
 INSTALL_SERVICES="${INSTALL_SERVICES:-false}"
 RESTART_PHP_FPM="${RESTART_PHP_FPM:-true}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
+PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-www}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 RUN_INTEGRATION_GATE="${RUN_INTEGRATION_GATE:-false}"
@@ -589,7 +590,12 @@ restart_php_fpm
 
 if [ "$INSTALL_SERVICES" = "true" ]; then
     step "Install/restart service Reverb, queue, dan scheduler"
-    DOMAIN="$DOMAIN" PHP_BIN="$PHP_BIN" bash deploy/aapanel-services.sh
+    DOMAIN="$DOMAIN" \
+        PHP_BIN="$PHP_BIN" \
+        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        SERVICE_USER="$PHP_FPM_RUNTIME_USER" \
+        SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+        bash deploy/aapanel-services.sh
 fi
 
 step "Matikan maintenance mode"
