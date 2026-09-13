@@ -71,6 +71,29 @@ check_service() {
     fail "Service tidak aktif setelah ${SERVICE_READY_ATTEMPTS} pemeriksaan: $service"
 }
 
+check_php_fpm() {
+    local init_script="/etc/init.d/${PHP_FPM_SERVICE}" attempt
+
+    for attempt in $(seq 1 "$SERVICE_READY_ATTEMPTS"); do
+        if systemctl is-active --quiet "$PHP_FPM_SERVICE"; then
+            ok "PHP-FPM aktif: $PHP_FPM_SERVICE"
+            return
+        fi
+
+        # aaPanel can manage PHP-FPM through SysV while systemd reports its
+        # generated compatibility unit as inactive. Its init status is the
+        # authoritative health signal in that layout.
+        if [ -x "$init_script" ] && "$init_script" status >/dev/null 2>&1; then
+            ok "PHP-FPM aktif melalui aaPanel init script: $PHP_FPM_SERVICE"
+            return
+        fi
+
+        sleep 1
+    done
+
+    fail "PHP-FPM belum aktif: $PHP_FPM_SERVICE"
+}
+
 check_runtime_write_access() {
     local dir
 
@@ -217,7 +240,7 @@ if [ -f .env ]; then
     if [ "$CHECK_SERVICES" = "true" ]; then
         if command -v systemctl >/dev/null 2>&1; then
             if [ -n "$PHP_FPM_SERVICE" ]; then
-                check_service "$PHP_FPM_SERVICE"
+                check_php_fpm
             else
                 warn "PHP_FPM_SERVICE kosong; lewati cek service PHP-FPM"
             fi

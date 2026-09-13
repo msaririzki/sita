@@ -404,20 +404,20 @@ restart_php_fpm() {
         return 0
     fi
 
-    if command -v systemctl >/dev/null 2>&1; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo systemctl reload-or-restart "$service_name" || sudo systemctl restart "$service_name"
-        else
-            systemctl reload-or-restart "$service_name" || systemctl restart "$service_name"
-        fi
-        return 0
-    fi
-
     if [ -x "/etc/init.d/${service_name}" ]; then
         if command -v sudo >/dev/null 2>&1; then
             sudo "/etc/init.d/${service_name}" reload || sudo "/etc/init.d/${service_name}" restart
         else
             "/etc/init.d/${service_name}" reload || "/etc/init.d/${service_name}" restart
+        fi
+        return 0
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo systemctl reload-or-restart "$service_name" || sudo systemctl restart "$service_name"
+        else
+            systemctl reload-or-restart "$service_name" || systemctl restart "$service_name"
         fi
         return 0
     fi

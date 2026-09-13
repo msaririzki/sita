@@ -82,6 +82,20 @@ run_privileged() {
     fi
 }
 
+restart_php_fpm() {
+    local init_script="/etc/init.d/${PHP_FPM_SERVICE}"
+
+    # aaPanel PHP-FPM is often managed by a SysV init script. systemd creates a
+    # generated unit for it, but that unit can report inactive while PHP-FPM is
+    # running. Prefer the aaPanel init script when it exists.
+    if [ -x "$init_script" ]; then
+        run_privileged "$init_script" reload || run_privileged "$init_script" restart
+        return
+    fi
+
+    run_privileged systemctl reload-or-restart "$PHP_FPM_SERVICE"
+}
+
 read_privileged() {
     if [ -r "$1" ]; then
         cat "$1"
@@ -104,7 +118,7 @@ restart_runtime() {
         PHP_BIN="$PHP_BIN" \
         SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
         bash "$SCRIPT_ROOT/deploy/aapanel-services.sh"
-    run_privileged systemctl restart "$PHP_FPM_SERVICE"
+    restart_php_fpm
 }
 
 restore_previous_release() {
@@ -139,7 +153,7 @@ restore_previous_release() {
         PHP_BIN="$PHP_BIN" \
         SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
         bash "$SCRIPT_ROOT/deploy/aapanel-services.sh" || true
-    run_privileged systemctl restart "$PHP_FPM_SERVICE" || true
+    restart_php_fpm || true
     printf '[ROLLBACK] Tidak ada release sebelumnya; konfigurasi aplikasi awal dipertahankan.\n' >&2
 }
 

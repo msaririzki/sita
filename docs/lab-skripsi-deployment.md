@@ -443,3 +443,10 @@ Membuktikan bahwa deployment tidak cukup dinyatakan berhasil hanya karena script
 ## Catatan untuk Sinopsis
 
 Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tetapi pembaruan baru terlihat setelah refresh ketika perpindahan Docker ke aaPanel. Bukti E-01 sampai E-06 menunjukkan akar masalah deployment dapat muncul pada build frontend, runtime, resource VM, CLI panel, maupun reverse proxy. Karena itu objek rancang bangun yang tepat adalah gate validasi deployment berbasis pemeriksaan integrasi, bukan hanya script copy/build biasa.
+
+### E-51 - Replikasi GUI aaPanel pada baseline bersih
+
+- **Tindakan operator:** pada VM `sita-aapanel` yang telah dikembalikan ke baseline bersih, operator memasang Nginx 1.30, PHP 8.4, MariaDB 10.11, phpMyAdmin, dan Pure-FTPd melalui antrean aaPanel, lalu membuat vhost `sita-aapanel.ikydev.com` dengan PHP 8.4. Folder root awal aaPanel adalah `/www/wwwroot/sita-aapanel.ikydev.com`.
+- **Hasil verifikasi read-only:** Nginx dan PHP-FPM aktif; MariaDB tersedia. Extension SITA aktif kecuali `fileinfo`, dan Node.js/npm belum tersedia pada shell deploy. Kedua kondisi harus diselesaikan sebelum bootstrap agar pemeriksaan tidak memberi hasil semu.
+- **Temuan kompatibilitas aaPanel:** proses master PHP-FPM aktif melalui `/etc/init.d/php-fpm-84`, tetapi compatibility unit `php-fpm-84.service` buatan systemd melaporkan `inactive` dan `systemctl restart php-fpm-84` gagal tanpa menghentikan master process. Runner diperbaiki agar lebih dulu memakai init script aaPanel untuk reload/restart dan Integration Gate membaca status init tersebut sebagai sinyal kesehatan yang benar.
+- **Makna skripsi:** verifikasi deployment harus menguji mekanisme pengelolaan runtime yang benar-benar dipakai platform, bukan hanya nama unit yang tampak seragam. Perbedaan antara status systemd dan runtime PHP-FPM aktual adalah kasus portabilitas yang dapat dideteksi serta diperbaiki secara terukur.
