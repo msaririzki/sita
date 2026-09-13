@@ -173,6 +173,8 @@ deploy_application() {
             DOMAIN="$DOMAIN" \
             PHP_BIN="$PHP_BIN" \
             NPM_BIN="$NPM_BIN" \
+            MIGRATION_MODE="$MIGRATION_MODE" \
+            DB_BACKUP_DIR="$DB_BACKUP_DIR" \
             PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
             PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
             PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \

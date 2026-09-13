@@ -30,6 +30,8 @@ HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-auto}"
 ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
 ORIGIN_PROBE_HTTP_PORT="${ORIGIN_PROBE_HTTP_PORT:-80}"
 CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
+MIGRATION_MODE="${MIGRATION_MODE:-prompt}"
+DB_BACKUP_DIR="${DB_BACKUP_DIR:-/var/backups/sita}"
 
 if [ ! -d "$CONTROL_DIR/.git" ]; then
     printf 'Atomic release membutuhkan checkout Git pada APP_DIR: %s\n' "$CONTROL_DIR" >&2
@@ -109,6 +111,8 @@ DEPLOY_TEMPORARY_DIRECTORY=''
 CANDIDATE_DIR=''
 PREVIOUS_RELEASE=''
 VHOST_BACKUP_FILE=''
+DB_BACKUP_DEFAULTS_FILE=''
+DB_BACKUP_TEMPORARY_FILE=''
 ACTIVATED=false
 COMPLETED=false
 ROLLING_BACK=false
@@ -169,6 +173,15 @@ finish() {
 
     if [ -n "$DEPLOY_TEMPORARY_DIRECTORY" ]; then
         rm -rf "$DEPLOY_TEMPORARY_DIRECTORY"
+    fi
+
+    # A client defaults file can contain the database password. Remove both
+    # temporary files on every failure path, including a failed database dump.
+    if [ -n "$DB_BACKUP_DEFAULTS_FILE" ]; then
+        rm -f "$DB_BACKUP_DEFAULTS_FILE"
+    fi
+    if [ -n "$DB_BACKUP_TEMPORARY_FILE" ]; then
+        rm -f "$DB_BACKUP_TEMPORARY_FILE"
     fi
 
     if [ -n "$CANDIDATE_DIR" ] && [ "$COMPLETED" = false ] && [ "$ACTIVATED" = false ]; then
@@ -273,6 +286,8 @@ create_candidate() {
             RELEASE_KEEP="$RELEASE_KEEP" \
             MANAGE_NGINX_ROOT="$MANAGE_NGINX_ROOT" \
             RELEASE_MIGRATION_POLICY="$RELEASE_MIGRATION_POLICY" \
+            MIGRATION_MODE="$MIGRATION_MODE" \
+            DB_BACKUP_DIR="$DB_BACKUP_DIR" \
             HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
             ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
             ORIGIN_PROBE_HTTP_PORT="$ORIGIN_PROBE_HTTP_PORT" \
@@ -351,6 +366,13 @@ assert_no_pending_migrations() {
     output="$(cd "$CANDIDATE_DIR" && "$PHP_BIN" artisan migrate:status --pending --no-ansi 2>&1)"
     status=$?
     set -e
+    if [ "$status" -ne 0 ] && grep -Fq 'Migration table not found' <<<"$output"; then
+        apply_initial_migrations
+        set +e
+        output="$(cd "$CANDIDATE_DIR" && "$PHP_BIN" artisan migrate:status --pending --no-ansi 2>&1)"
+        status=$?
+        set -e
+    fi
     pending="$(printf '%s\n' "$output" | sed -n -E 's/^[[:space:]]*([0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{6}_[A-Za-z0-9_]+).*/\1/p')"
     if [ -n "$pending" ]; then
         printf 'Atomic rollback diblokir karena terdapat migration tertunda:\n%s\n' "$pending" >&2
@@ -362,6 +384,94 @@ assert_no_pending_migrations() {
         exit 1
     fi
     printf 'Tidak ada migration tertunda; rollback kode aman dijalankan.\n'
+}
+
+env_value() {
+    local key="$1"
+    grep -E "^${key}=" "$CANDIDATE_DIR/.env" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+backup_database_before_initial_migration() {
+    local db_connection dump_bin db_host db_port db_database db_username db_password backup_slug run_id backup_file checksum_file
+    db_connection="$(env_value DB_CONNECTION)"
+    case "$db_connection" in
+        mysql|mariadb) ;;
+        *)
+            printf 'Backup otomatis migration awal saat ini mendukung MySQL/MariaDB. DB_CONNECTION sekarang: %s\n' "${db_connection:-kosong}" >&2
+            exit 1
+            ;;
+    esac
+
+    dump_bin="$(command -v mysqldump || command -v mariadb-dump || true)"
+    [ -n "$dump_bin" ] || { printf 'mysqldump atau mariadb-dump tidak tersedia; migration awal dibatalkan.\n' >&2; exit 1; }
+    require_command gzip
+    require_command sha256sum
+    db_host="$(env_value DB_HOST)"; db_port="$(env_value DB_PORT)"; db_database="$(env_value DB_DATABASE)"; db_username="$(env_value DB_USERNAME)"; db_password="$(env_value DB_PASSWORD)"
+    [ -n "$db_host" ] && [ -n "$db_port" ] && [ -n "$db_database" ] && [ -n "$db_username" ] || { printf 'Konfigurasi database tidak lengkap; migration awal dibatalkan.\n' >&2; exit 1; }
+    if [[ "$DB_BACKUP_DIR" != /* ]]; then
+        printf 'DB_BACKUP_DIR harus memakai path absolut. Nilai sekarang: %s\n' "$DB_BACKUP_DIR" >&2
+        exit 2
+    fi
+    run_privileged install -d -m 700 -o "$(id -un)" -g "$(id -gn)" "$DB_BACKUP_DIR"
+    [ -w "$DB_BACKUP_DIR" ] || { printf 'Direktori backup tidak dapat ditulis: %s\n' "$DB_BACKUP_DIR" >&2; exit 1; }
+    run_id="$(date -u +%Y%m%dT%H%M%SZ)"
+    backup_slug="$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')"
+    backup_file="${DB_BACKUP_DIR}/sita-${backup_slug}-initial-${run_id}.sql.gz"
+    checksum_file="${backup_file}.sha256"
+    DB_BACKUP_DEFAULTS_FILE="$(mktemp)"
+    DB_BACKUP_TEMPORARY_FILE="$(mktemp "${DB_BACKUP_DIR}/.sita-${backup_slug}-initial-${run_id}.sql.gz.tmp.XXXXXX")"
+    chmod 600 "$DB_BACKUP_DEFAULTS_FILE" "$DB_BACKUP_TEMPORARY_FILE"
+    cat > "$DB_BACKUP_DEFAULTS_FILE" <<EOF
+[client]
+host=${db_host}
+port=${db_port}
+user=${db_username}
+password=${db_password}
+EOF
+
+    printf 'Membuat backup MySQL/MariaDB sebelum migration awal...\n'
+    if ! "$dump_bin" --defaults-extra-file="$DB_BACKUP_DEFAULTS_FILE" --single-transaction --routines --triggers --no-tablespaces --databases "$db_database" | gzip -c > "$DB_BACKUP_TEMPORARY_FILE"; then
+        printf 'Backup database gagal; migration awal tidak dijalankan.\n' >&2
+        exit 1
+    fi
+    rm -f "$DB_BACKUP_DEFAULTS_FILE"
+    DB_BACKUP_DEFAULTS_FILE=''
+    if [ ! -s "$DB_BACKUP_TEMPORARY_FILE" ] || ! gzip -t "$DB_BACKUP_TEMPORARY_FILE"; then
+        printf 'Backup database tidak valid atau kosong; migration awal tidak dijalankan.\n' >&2
+        exit 1
+    fi
+    mv "$DB_BACKUP_TEMPORARY_FILE" "$backup_file"
+    DB_BACKUP_TEMPORARY_FILE=''
+    chmod 600 "$backup_file"
+    sha256sum "$backup_file" > "$checksum_file"
+    chmod 600 "$checksum_file"
+    printf '[OK] Backup database valid: %s\n' "$backup_file"
+    printf '[OK] Checksum backup: %s\n' "$checksum_file"
+}
+
+apply_initial_migrations() {
+    local answer
+    printf 'Database belum memiliki tabel migrations. Migration awal diperlukan sebelum release pertama.\n'
+    case "$MIGRATION_MODE" in
+        apply)
+            printf 'Migration awal disetujui melalui MIGRATION_MODE=apply. Backup otomatis akan dibuat.\n'
+            ;;
+        prompt)
+            if [ ! -t 0 ]; then
+                printf 'Migration awal memerlukan konfirmasi interaktif. Jalankan dari console atau set MIGRATION_MODE=apply setelah persetujuan.\n' >&2
+                exit 1
+            fi
+            read -r -p 'Buat backup lalu jalankan migration awal sekarang? [y/N]: ' answer
+            case "$answer" in y|Y|yes|YES) ;; *) printf 'Migration awal dibatalkan; candidate tidak diaktifkan.\n' >&2; exit 1 ;; esac
+            ;;
+        skip)
+            printf 'Migration awal diperlukan, tetapi MIGRATION_MODE=skip. Candidate tidak diaktifkan.\n' >&2
+            exit 1
+            ;;
+        *) printf 'MIGRATION_MODE harus prompt, apply, atau skip.\n' >&2; exit 2 ;;
+    esac
+    backup_database_before_initial_migration
+    (cd "$CANDIDATE_DIR" && "$PHP_BIN" artisan migrate --force)
 }
 
 ensure_nginx_points_to_current() {
