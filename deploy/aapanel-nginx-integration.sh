@@ -43,8 +43,8 @@ run_privileged() {
     fi
 }
 
-[ -f "$NGINX_CONFIG" ] || { printf 'Vhost aaPanel tidak ditemukan: %s\n' "$NGINX_CONFIG" >&2; exit 1; }
-[ -x "$NGINX_BIN" ] || { printf 'Binary Nginx tidak ditemukan: %s\n' "$NGINX_BIN" >&2; exit 1; }
+run_privileged test -f "$NGINX_CONFIG" || { printf 'Vhost aaPanel tidak ditemukan: %s\n' "$NGINX_CONFIG" >&2; exit 1; }
+run_privileged test -x "$NGINX_BIN" || { printf 'Binary Nginx tidak ditemukan: %s\n' "$NGINX_BIN" >&2; exit 1; }
 
 vhost_content="$(run_privileged cat "$NGINX_CONFIG")"
 expected_include="include ${VHOST_DIRECTORY}/extension/${DOMAIN}/*.conf;"
