@@ -308,7 +308,7 @@ build_candidate() {
     prepare_composer_runtime
     "$COMPOSER_BIN" install --no-dev --prefer-dist --optimize-autoloader --no-interaction
     "$COMPOSER_BIN" check-platform-reqs --no-dev
-    "$NPM_BIN" ci
+    install_candidate_node_dependencies
     "$NPM_BIN" run build
     rm -f public/hot
     "$PHP_BIN" artisan storage:link --force
@@ -320,6 +320,28 @@ build_candidate() {
     "$PHP_BIN" artisan route:cache
     "$PHP_BIN" artisan view:cache
     "$PHP_BIN" artisan event:cache
+}
+
+install_candidate_node_dependencies() {
+    local attempt
+
+    for attempt in 1 2 3; do
+        # Candidate belum aktif, sehingga pembersihan ini tidak memengaruhi
+        # aplikasi yang sedang dilayani. Ini mencegah artefak parsial setelah
+        # ECONNRESET atau koneksi registry npm terputus.
+        rm -rf node_modules
+        if "$NPM_BIN" ci --no-audit --fund=false --fetch-retries=3 --fetch-retry-factor=2 --fetch-retry-mintimeout=2000 --fetch-retry-maxtimeout=15000; then
+            return
+        fi
+
+        if [ "$attempt" -lt 3 ]; then
+            printf '[WARN] npm ci gagal pada percobaan %s/3; ulangi candidate dependency setelah 5 detik.\n' "$attempt" >&2
+            sleep 5
+        fi
+    done
+
+    printf 'npm ci gagal setelah tiga percobaan. Candidate tidak akan diaktifkan. Periksa koneksi registry npm.\n' >&2
+    return 1
 }
 
 assert_no_pending_migrations() {
