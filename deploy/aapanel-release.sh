@@ -59,6 +59,12 @@ DEPENDENCY_AUDIT_THRESHOLD="${DEPENDENCY_AUDIT_THRESHOLD:-high}"
 INSTALL_SERVICES=false
 INSTALL_MISSING_PHP_EXTENSIONS="${INSTALL_MISSING_PHP_EXTENSIONS:-true}"
 
+# npm's executable uses /usr/bin/env node. When the profile points to the
+# isolated SITA runtime, expose its bin directory to child build processes.
+if [ -x "$NODE_BIN" ]; then
+    export PATH="$(dirname "$NODE_BIN"):${PATH}"
+fi
+
 if [ "$ACTION" = 'bootstrap' ]; then
     INSTALL_SERVICES=true
 fi
