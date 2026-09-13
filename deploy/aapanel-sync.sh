@@ -7,6 +7,7 @@ set -Eeuo pipefail
 
 DOMAIN="${DOMAIN:?Isi DOMAIN, contoh: DOMAIN=sita.kampus.ac.id bash deploy/aapanel-sync.sh}"
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+SITE_ROOT="${SITE_ROOT:-$APP_DIR}"
 PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_SOCKET="${PHP_FPM_SOCKET:-}"
@@ -94,6 +95,11 @@ if [[ "$APP_DIR" != /* ]]; then
     exit 2
 fi
 
+if [[ "$SITE_ROOT" != /* ]]; then
+    printf 'SITE_ROOT harus berupa path absolut.\n' >&2
+    exit 2
+fi
+
 if [ -z "$PHP_FPM_SOCKET" ]; then
     case "$PHP_BIN" in
         */php/[0-9][0-9]/bin/php)
@@ -110,6 +116,9 @@ if [[ "$PHP_FPM_SOCKET" != /tmp/php-cgi-[0-9][0-9].sock ]]; then
     printf 'PHP_FPM_SOCKET harus berupa socket aaPanel, contoh /tmp/php-cgi-84.sock.\n' >&2
     exit 2
 fi
+
+PHP_FPM_INCLUDE="enable-php-$(basename "$(dirname "$(dirname "$PHP_BIN")")").conf"
+PHP_FPM_INCLUDE_PATH="/www/server/nginx/conf/${PHP_FPM_INCLUDE}"
 
 printf 'SITA aaPanel synchronization check\n'
 printf 'Domain: %s\nApplication: %s\nNginx config: %s\n\n' "$DOMAIN" "$APP_DIR" "$NGINX_CONFIG"
@@ -145,12 +154,20 @@ if config_content="$(read_privileged "$NGINX_CONFIG" 2>/dev/null)"; then
 
     if grep -Fq "root ${APP_DIR}/public;" <<<"$config_content"; then
         ok "Document root Nginx mengarah ke public Laravel"
+    elif grep -Fq "root ${APP_DIR};" <<<"$config_content"; then
+        ok "Document root masih control checkout; Atomic Release akan mengalihkannya ke current/public"
+    elif grep -Fq "root ${SITE_ROOT};" <<<"$config_content"; then
+        ok "Document root bawaan aaPanel terdeteksi; Atomic Release akan mengalihkannya ke current/public"
     else
-        fail "Document root harus mengarah ke ${APP_DIR}/public"
+        fail "Document root bukan ${APP_DIR}/public, ${APP_DIR}, atau SITE_ROOT ${SITE_ROOT}"
     fi
 
     if grep -Fq "fastcgi_pass unix:${PHP_FPM_SOCKET};" <<<"$config_content"; then
         ok "Socket PHP-FPM sesuai: ${PHP_FPM_SOCKET}"
+    elif grep -Eq "^[[:space:]]*include[[:space:]]+${PHP_FPM_INCLUDE};" <<<"$config_content" \
+        && run_privileged grep -Fq "fastcgi_pass" "$PHP_FPM_INCLUDE_PATH" \
+        && run_privileged grep -Fq "${PHP_FPM_SOCKET}" "$PHP_FPM_INCLUDE_PATH"; then
+        ok "Vhost memakai ${PHP_FPM_INCLUDE}; socket PHP-FPM sesuai: ${PHP_FPM_SOCKET}"
     else
         fail "Vhost belum memakai socket PHP-FPM yang diharapkan: ${PHP_FPM_SOCKET}"
     fi
@@ -174,7 +191,10 @@ else
     warn "Binary Nginx aaPanel tidak ditemukan: ${NGINX_BIN}"
 fi
 
-socket_references="$(run_privileged grep -rl --include='*.conf' -F "fastcgi_pass unix:${PHP_FPM_SOCKET};" "$NGINX_VHOST_DIR" 2>/dev/null || true)"
+socket_references="$({
+    run_privileged grep -rl --include='*.conf' -F "fastcgi_pass unix:${PHP_FPM_SOCKET};" "$NGINX_VHOST_DIR" 2>/dev/null || true
+    run_privileged grep -rl --include='*.conf' -E "^[[:space:]]*include[[:space:]]+${PHP_FPM_INCLUDE};" "$NGINX_VHOST_DIR" 2>/dev/null || true
+} | sort -u)"
 matching_vhosts=''
 while IFS= read -r vhost; do
     [ -n "$vhost" ] || continue

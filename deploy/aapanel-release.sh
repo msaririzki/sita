@@ -135,6 +135,7 @@ sync_environment() {
     run_privileged env \
         DOMAIN="$DOMAIN" \
         APP_DIR="$(active_app_dir)" \
+        SITE_ROOT="$SITE_ROOT" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         PHP_FPM_SOCKET="$PHP_FPM_SOCKET" \

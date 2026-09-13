@@ -423,6 +423,7 @@ verify_candidate() {
     run_privileged env \
         DOMAIN="$DOMAIN" \
         APP_DIR="$CURRENT_LINK" \
+        SITE_ROOT="$SITE_ROOT" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         NGINX_CONFIG="$NGINX_CONFIG" \

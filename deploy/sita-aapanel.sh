@@ -305,7 +305,7 @@ show_action_result() {
         check)
             printf '\n%b%s%b\n' "$bold$green" 'CHECK SELESAI - SERVER SIAP UNTUK UPDATE' "$reset"
             printf 'Jika ingin memperbarui kode aplikasi sekarang, kembali ke menu lalu pilih %b[4] Release update aplikasi%b.\n' "$cyan" "$reset"
-            printf 'Jika ini server baru, selesaikan konfigurasi GUI dan .env, lalu pilih %b[2] Siapkan server baru%b.\n' "$cyan" "$reset"
+            printf 'Jika ini server baru, selesaikan konfigurasi GUI dan .env, lalu pilih %b[3] Siapkan server baru%b.\n' "$cyan" "$reset"
             ;;
         bootstrap)
             printf '\n%b%s%b\n' "$bold$green" 'DEPLOY AWAL SELESAI' "$reset"
@@ -464,10 +464,10 @@ show_tutorial() {
     printf '  [1] Inisialisasi konfigurasi aplikasi\n'
     printf '      Menyimpan profile operasional, membuat .env, dan membuat key aplikasi\n'
     printf '      serta Reverb secara acak. Password database tidak ditampilkan.\n\n'
-    printf '  [3] Check kesiapan server\n'
+    printf '  [2] Check kesiapan server\n'
     printf '      Memeriksa sinkronisasi GUI aaPanel, PHP, extension, Nginx, .env,\n'
     printf '      permission runtime, dan service tanpa mengubah aplikasi.\n\n'
-    printf '  [2] Siapkan server baru (deploy awal)\n'
+    printf '  [3] Siapkan server baru (deploy awal)\n'
     printf '      Dipakai sekali untuk deploy awal setelah Check lulus. Menjalankan\n'
     printf '      deploy awal dan memasang service Reverb, queue, serta scheduler.\n\n'
     printf '  [4] %s\n' "$(release_menu_copy)"
@@ -524,8 +524,8 @@ while true; do
     title
     printf '\n'
     printf '  %b[1]%b  Inisialisasi aplikasi    %b.env + profile + key aman, sekali per server%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[2]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[3]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[2]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[3]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     if [ "$(deployment_strategy)" = 'atomic' ]; then
         printf '  %b[4]%b  Atomic Release            %bCandidate + gate + rollback kode%b\n' "$cyan" "$reset" "$dim" "$reset"
     else
@@ -540,8 +540,8 @@ while true; do
     read -r -p 'Pilih menu: ' choice
     case "$choice" in
         1) initialize_application ;;
-        2) if run_action bootstrap; then show_action_result bootstrap; else show_action_failure bootstrap; fi ;;
-        3) if run_action check; then show_action_result check; else show_action_failure check; fi ;;
+        2) if run_action check; then show_action_result check; else show_action_failure check; fi ;;
+        3) if run_action bootstrap; then show_action_result bootstrap; else show_action_failure bootstrap; fi ;;
         4) if run_action release; then show_action_result release; else show_action_failure release; fi ;;
         5) show_last_log ;;
         6) show_profile ;;
