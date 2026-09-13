@@ -7,6 +7,7 @@ set -Eeuo pipefail
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTROL_DIR="${APP_DIR:-$SCRIPT_ROOT}"
+SITE_ROOT="${SITE_ROOT:-$CONTROL_DIR}"
 DOMAIN="${DOMAIN:?Isi DOMAIN sebelum menjalankan atomic release}"
 PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
 COMPOSER_BIN="${COMPOSER_BIN:-composer}"
@@ -40,8 +41,8 @@ if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
     exit 2
 fi
 
-if [[ "$RELEASE_ROOT" != /* ]] || [[ "$CURRENT_LINK" != "${RELEASE_ROOT}"/* ]]; then
-    printf 'RELEASE_ROOT dan CURRENT_LINK harus berupa path absolut; CURRENT_LINK harus berada di RELEASE_ROOT.\n' >&2
+if [[ "$RELEASE_ROOT" != /* ]] || [[ "$CURRENT_LINK" != "${RELEASE_ROOT}"/* ]] || [[ "$SITE_ROOT" != /* ]]; then
+    printf 'RELEASE_ROOT, CURRENT_LINK, dan SITE_ROOT harus berupa path absolut; CURRENT_LINK harus berada di RELEASE_ROOT.\n' >&2
     exit 2
 fi
 
@@ -250,6 +251,7 @@ create_candidate() {
         exec env \
             AAPANEL_ATOMIC_REEXECUTED=true \
             APP_DIR="$CONTROL_DIR" \
+            SITE_ROOT="$SITE_ROOT" \
             DOMAIN="$DOMAIN" \
             PHP_BIN="$PHP_BIN" \
             COMPOSER_BIN="$COMPOSER_BIN" \
@@ -345,18 +347,19 @@ ensure_nginx_points_to_current() {
         return
     fi
 
-    # A new aaPanel site normally starts with root equal to its site directory.
-    # A previously prepared site already uses CONTROL_DIR/public. Support both
-    # forms so the operator does not have to edit a vhost just to start SITA.
+    # A new aaPanel site normally starts with root equal to SITE_ROOT. Source
+    # may live directly there or in a child directory. A previously prepared
+    # site already uses CONTROL_DIR/public. Support all verified forms so the
+    # operator does not have to edit a vhost just to start SITA.
     old_root=''
-    for candidate_root in "root ${CONTROL_DIR}/public;" "root ${CONTROL_DIR};"; do
+    for candidate_root in "root ${CONTROL_DIR}/public;" "root ${CONTROL_DIR};" "root ${SITE_ROOT};"; do
         if grep -Fq "$candidate_root" <<<"$content"; then
             old_root="$candidate_root"
             break
         fi
     done
     if [ -z "$old_root" ]; then
-        printf 'Root Nginx bukan root aaPanel bawaan, control checkout, atau current release. Periksa vhost melalui GUI aaPanel.\n' >&2
+        printf 'Root Nginx bukan SITE_ROOT aaPanel, control checkout, atau current release. Periksa vhost melalui GUI aaPanel.\n' >&2
         exit 1
     fi
 

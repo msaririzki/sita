@@ -128,8 +128,99 @@ title() {
     line
 }
 
+dotenv_quote() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//\$/\\\$}"
+    printf '"%s"' "$value"
+}
+
+set_env_value() {
+    local key="$1" value="$2" encoded temporary_file
+    encoded="$(dotenv_quote "$value")"
+    temporary_file="$(mktemp "${PROJECT_ROOT}/.env.tmp.XXXXXX")"
+    awk -v key="$key" -v value="$encoded" '
+        index($0, key "=") == 1 { print key "=" value; seen=1; next }
+        { print }
+        END { if (!seen) print key "=" value }
+    ' "$PROJECT_ROOT/.env" > "$temporary_file"
+    mv "$temporary_file" "$PROJECT_ROOT/.env"
+}
+
+create_environment() {
+    local database_host database_port database_name database_username database_password
+
+    if [ -f "$PROJECT_ROOT/.env" ]; then
+        printf '%b.env sudah tersedia; tidak ditimpa.%b\n' "$yellow" "$reset"
+        return
+    fi
+    if [ ! -f "$PROJECT_ROOT/.env.example" ]; then
+        printf '%b.env.example tidak ditemukan pada source SITA.%b\n' "$red" "$reset" >&2
+        return 1
+    fi
+
+    printf '\nMembuat .env production. Password database tidak akan ditampilkan.\n'
+    read -r -p 'Host database [127.0.0.1]: ' database_host
+    database_host="${database_host:-127.0.0.1}"
+    read -r -p 'Port database [3306]: ' database_port
+    database_port="${database_port:-3306}"
+    read -r -p 'Nama database [sita_aapanel]: ' database_name
+    database_name="${database_name:-sita_aapanel}"
+    read -r -p 'Username database [sita_aapanel]: ' database_username
+    database_username="${database_username:-sita_aapanel}"
+    while true; do
+        read -r -s -p 'Password database (tidak ditampilkan): ' database_password
+        printf '\n'
+        [ -n "$database_password" ] && break
+        printf '%bPassword database tidak boleh kosong.%b\n' "$yellow" "$reset"
+    done
+
+    cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
+    set_env_value APP_NAME SITA
+    set_env_value APP_ENV production
+    set_env_value APP_DEBUG false
+    set_env_value APP_URL "$(profile_value PUBLIC_BASE_URL)"
+    set_env_value APP_TIMEZONE Asia/Makassar
+    set_env_value APP_KEY "base64:$(openssl rand -base64 32)"
+    set_env_value LOG_LEVEL info
+    set_env_value DB_CONNECTION mysql
+    set_env_value DB_HOST "$database_host"
+    set_env_value DB_PORT "$database_port"
+    set_env_value DB_DATABASE "$database_name"
+    set_env_value DB_USERNAME "$database_username"
+    set_env_value DB_PASSWORD "$database_password"
+    set_env_value SESSION_DRIVER database
+    set_env_value SESSION_SECURE_COOKIE true
+    set_env_value SESSION_SAME_SITE lax
+    set_env_value CACHE_STORE database
+    set_env_value QUEUE_CONNECTION database
+    set_env_value BROADCAST_CONNECTION reverb
+    set_env_value REVERB_APP_ID "sita-$(profile_value DOMAIN | tr '.' '-')"
+    set_env_value REVERB_APP_KEY "$(openssl rand -hex 16)"
+    set_env_value REVERB_APP_SECRET "$(openssl rand -hex 32)"
+    set_env_value REVERB_HOST "$(profile_value DOMAIN)"
+    set_env_value REVERB_PORT 443
+    set_env_value REVERB_SCHEME https
+    set_env_value REVERB_INTERNAL_HOST 127.0.0.1
+    set_env_value REVERB_INTERNAL_PORT 8080
+    set_env_value REVERB_INTERNAL_SCHEME http
+    set_env_value REVERB_SERVER_HOST 127.0.0.1
+    set_env_value REVERB_SERVER_PORT 8080
+    set_env_value REVERB_ALLOWED_ORIGINS "$(profile_value DOMAIN)"
+    set_env_value VITE_REVERB_HOST "$(profile_value DOMAIN)"
+    set_env_value VITE_REVERB_PORT 443
+    set_env_value VITE_REVERB_SCHEME https
+    set_env_value MAIL_MAILER log
+    chmod 640 "$PROJECT_ROOT/.env"
+    if ! chgrp www "$PROJECT_ROOT/.env" 2>/dev/null; then
+        sudo chgrp www "$PROJECT_ROOT/.env"
+    fi
+    printf '%b.env dibuat dengan APP_KEY dan key Reverb acak tanpa ditampilkan.%b\n' "$green" "$reset"
+}
+
 create_profile() {
-    local domain public_url
+    local domain public_url site_root
 
     if [ -f "$PROFILE_FILE" ]; then
         printf '%bProfile sudah tersedia:%b %s\n' "$yellow" "$reset" "$PROFILE_FILE"
@@ -146,11 +237,18 @@ create_profile() {
     read -r -p 'URL publik [https://'"$domain"']: ' public_url
     public_url="${public_url:-https://${domain}}"
     public_url="${public_url%/}"
+    read -r -p "Folder root Website aaPanel [$(dirname "$PROJECT_ROOT")]: " site_root
+    site_root="${site_root:-$(dirname "$PROJECT_ROOT")}"
+    if [[ ! "$site_root" =~ ^/[A-Za-z0-9._/-]+$ ]] || [[ "$site_root" == '/' ]]; then
+        printf '%bFolder root Website aaPanel tidak valid.%b\n' "$red" "$reset" >&2
+        return 1
+    fi
 
     cat > "$PROFILE_FILE" <<EOF
 # Dibuat oleh deploy/sita.sh. Tidak berisi password atau secret Laravel.
 DOMAIN=${domain}
 APP_DIR=${PROJECT_ROOT}
+SITE_ROOT=${site_root}
 PHP_BIN=/www/server/php/84/bin/php
 PHP_FPM_SERVICE=php-fpm-84
 PHP_FPM_RUNTIME_USER=www
@@ -182,7 +280,12 @@ DEPENDENCY_AUDIT_THRESHOLD=high
 EOF
     chmod 600 "$PROFILE_FILE"
     printf '%bProfile dibuat:%b %s\n' "$green" "$reset" "$PROFILE_FILE"
-    printf 'Isi .env secara terpisah; profile ini sengaja tidak menyimpan secret.\n'
+    printf 'Profile dibuat. Lanjutkan inisialisasi untuk membuat .env tanpa menampilkan secret.\n'
+}
+
+initialize_application() {
+    create_profile || return
+    create_environment
 }
 
 run_action() {
@@ -347,19 +450,20 @@ show_tutorial() {
     printf '  4. Biarkan root bawaan; atomic release akan mengalihkan ke current/public dengan backup.\n'
     printf '  5. Untuk domain publik, aktifkan SSL setelah DNS mengarah ke server.\n\n'
 
-    printf '%bTahap 1 - Siapkan kode dan rahasia aplikasi%b\n' "$bold$blue" "$reset"
-    printf '  1. Clone repository ke path website aaPanel, misalnya /www/wwwroot/sita.kampus.ac.id.\n'
-    printf '  2. Buat .env dari .env.example dan isi APP_KEY, database, mail, dan Reverb.\n'
-    printf '  3. Jangan menaruh password atau secret pada profile server maupun Git.\n\n'
+    printf '%bTahap 1 - Clone source dan buat konfigurasi aplikasi%b\n' "$bold$blue" "$reset"
+    printf '  1. Clone source ke subfolder situs, misalnya /www/wwwroot/sita.kampus.ac.id/sita.\n'
+    printf '  2. Jalankan console dari source tersebut, lalu pilih [1].\n'
+    printf '  3. Menu [1] membuat .env, key aplikasi/Reverb, serta profile tanpa\n'
+    printf '     menampilkan secret. Jangan menaruh password pada profile atau Git.\n\n'
 
     printf '%bTahap 2 - Jalankan konsol%b\n' "$bold$blue" "$reset"
-    printf '  cd /www/wwwroot/sita.kampus.ac.id\n'
+    printf '  cd /www/wwwroot/sita.kampus.ac.id/sita\n'
     printf '  bash deploy/sita.sh\n\n'
 
     printf '%bUrutan menu yang direkomendasikan%b\n' "$bold$blue" "$reset"
-    printf '  [1] Buat profile server\n'
-    printf '      Menyimpan lokasi proyek, domain, PHP-FPM, dan URL health check.\n'
-    printf '      Dibuat sekali untuk setiap server. Tidak menyimpan rahasia.\n\n'
+    printf '  [1] Inisialisasi konfigurasi aplikasi\n'
+    printf '      Menyimpan profile operasional, membuat .env, dan membuat key aplikasi\n'
+    printf '      serta Reverb secara acak. Password database tidak ditampilkan.\n\n'
     printf '  [3] Check kesiapan server\n'
     printf '      Memeriksa sinkronisasi GUI aaPanel, PHP, extension, Nginx, .env,\n'
     printf '      permission runtime, dan service tanpa mengubah aplikasi.\n\n'
@@ -403,7 +507,7 @@ show_tutorial() {
 run_non_interactive() {
     case "$1" in
         bootstrap|check|release) run_action "$1" ;;
-        init) create_profile ;;
+        init) initialize_application ;;
         *)
             printf 'Penggunaan: bash deploy/sita.sh [bootstrap|check|release|init]\n' >&2
             exit 2
@@ -419,7 +523,7 @@ fi
 while true; do
     title
     printf '\n'
-    printf '  %b[1]%b  Buat profile server       %bSekali per server, tanpa secret%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[1]%b  Inisialisasi aplikasi    %b.env + profile + key aman, sekali per server%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[2]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[3]%b  Check kesiapan server     %bPemeriksaan tanpa perubahan%b\n' "$cyan" "$reset" "$dim" "$reset"
     if [ "$(deployment_strategy)" = 'atomic' ]; then
@@ -435,7 +539,7 @@ while true; do
 
     read -r -p 'Pilih menu: ' choice
     case "$choice" in
-        1) create_profile ;;
+        1) initialize_application ;;
         2) if run_action bootstrap; then show_action_result bootstrap; else show_action_failure bootstrap; fi ;;
         3) if run_action check; then show_action_result check; else show_action_failure check; fi ;;
         4) if run_action release; then show_action_result release; else show_action_failure release; fi ;;

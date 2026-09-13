@@ -91,55 +91,37 @@ npm --version
 
 Node harus minimal `20.19` atau `22.12`; gunakan Node 22 LTS. Bila Node dari aaPanel belum masuk `PATH`, tambahkan path Node version manager ke `PATH` akun deploy sebelum menjalankan console. Verifikasi ulang sampai dua perintah di atas menghasilkan versi.
 
-## 4. Jalankan wizard instalasi awal
+## 4. Clone source lalu jalankan console
 
-Sesudah komponen GUI pada bagian sebelumnya tersedia, login ke terminal aaPanel sebagai pengguna deploy. Jalankan **satu perintah** berikut:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/msaririzki/sita/codex/dependency-audit-p1/deploy/aapanel-first-install.sh -o /tmp/sita-first-install.sh && bash /tmp/sita-first-install.sh
-```
-
-Wizard menanyakan domain, lokasi source, branch Git, dan kredensial database. Password database dimasukkan tanpa tampil di terminal. Ia lalu melakukan seluruh pekerjaan awal berikut:
-
-- mempertahankan file bawaan aaPanel pada folder website;
-- mengambil source dari branch yang dipilih;
-- membuat `.env` production dengan permission `640` dan grup runtime `www`;
-- membuat `APP_KEY`, `REVERB_APP_KEY`, dan `REVERB_APP_SECRET` secara acak tanpa menampilkannya;
-- membuat profile deployment non-rahasia;
-- menawarkan Bootstrap langsung setelah Node.js siap.
-
-Nilai default path mengikuti pola aaPanel: `/www/wwwroot/<domain>`. Path tetap dapat diganti pada pertanyaan wizard, misalnya `/www/wwwroot/webkampus/sita`. Pastikan domain pada Website aaPanel menunjuk ke folder yang sama. Jangan memasukkan password, `APP_KEY`, atau secret Reverb ke Git maupun chat.
-
-Bila wizard berhenti karena konflik file Git, periksa `pwd` dan `git status --short`. Jangan menghapus isi folder website secara massal; file seperti `.user.ini`, `.htaccess`, dan halaman error dibuat aaPanel dan perlu dipertahankan.
-
-Untuk email, wizard memakai `MAIL_MAILER=log` sebagai nilai aman pada lab. Sebelum fitur email diuji, isi `MAIL_*` dengan layanan SMTP yang disetujui pada file `.env` lokal.
-
-## 5. Profile Deployment Console
-
-Wizard membuat `deploy/aapanel-profile.env` dengan mode `600`. Profile adalah **kartu konfigurasi operasional server** yang digunakan console pada setiap check, release, backup, dan rollback. Isinya berupa domain, path aplikasi, lokasi vhost, service PHP-FPM, URL healthcheck, lokasi backup, dan pengaturan atomic release. Karena disimpan sekali, operator tidak perlu mengisi data tersebut ulang setiap ada update aplikasi.
-
-Profile **tidak** berisi `DB_PASSWORD`, `APP_KEY`, token Cloudflare, atau secret Reverb. Semua nilai rahasia hanya tersimpan di `.env` lokal. Nilai penting yang dibuat wizard adalah:
-
-```dotenv
-HTTP_PROBE_MODE=auto
-ORIGIN_PROBE_ADDRESS=127.0.0.1
-ORIGIN_PROBE_HTTP_PORT=80
-CHECK_EDGE_HTTP=true
-MIGRATION_MODE=prompt
-DB_BACKUP_DIR=/var/backups/sita
-DEPLOYMENT_STRATEGY=atomic
-RELEASE_ROOT=/www/wwwroot/sita-aapanel.ikydev.com/.sita-release
-CURRENT_LINK=/www/wwwroot/sita-aapanel.ikydev.com/.sita-release/current
-MANAGE_NGINX_ROOT=prompt
-RELEASE_KEEP=3
-```
-
-Sesudah instalasi awal, seluruh operasi rutin memakai console dari folder source:
+Setelah komponen GUI tersedia, operator cukup clone source yang telah disetujui lalu membuka console dari source tersebut. Pola ini tidak memakai skrip unduhan terpisah.
 
 ```bash
 cd /www/wwwroot/sita-aapanel.ikydev.com
+git clone --branch codex/dependency-audit-p1 --single-branch https://github.com/msaririzki/sita.git sita
+cd sita
 bash deploy/sita.sh
 ```
+
+Source berada pada subfolder `sita`, sedangkan folder parent tetap menjadi root Website bawaan aaPanel. File panel seperti `.user.ini`, `.htaccess`, serta halaman error tetap berada pada folder parent dan tidak disentuh Git. Pada atomic release pertama, console mengenali root parent tersebut, mencadangkan vhost, menguji konfigurasi Nginx, lalu mengarahkannya ke `current/public` secara terkontrol.
+
+Bila administrator memilih nama atau lokasi source lain, clone ke lokasi tersebut. Saat menu inisialisasi meminta **Folder root Website aaPanel**, masukkan folder parent yang benar. Contoh: source `/www/wwwroot/webkampus/sita` memiliki root Website `/www/wwwroot/webkampus`.
+
+## 5. Inisialisasi aplikasi dari console
+
+Pilih environment **aaPanel**, lalu pilih menu **[1] Inisialisasi aplikasi**. Menu ini menanyakan domain, URL publik, folder root Website aaPanel, dan kredensial database. Password database diketik tersembunyi.
+
+Menu [1] otomatis membuat:
+
+- `.env` production dengan permission `640` dan grup runtime `www`;
+- `APP_KEY`, `REVERB_APP_KEY`, dan `REVERB_APP_SECRET` secara acak tanpa menampilkannya;
+- `deploy/aapanel-profile.env` dengan permission `600`;
+- konfigurasi domain, path, vhost, PHP-FPM, healthcheck, backup, dan atomic release.
+
+Profile adalah kartu konfigurasi operasional server yang dipakai console pada setiap check, release, backup, dan rollback. Ia tidak menyimpan `DB_PASSWORD`, `APP_KEY`, token Cloudflare, atau secret Reverb. Semua rahasia hanya tersimpan di `.env` lokal.
+
+Untuk email, menu membuat `MAIL_MAILER=log` sebagai nilai aman pada lab. Sebelum fitur email diuji, isi `MAIL_*` dengan layanan SMTP yang disetujui di `.env` lokal.
+
+Setelah menu [1], urutan normal adalah [3] Check kesiapan server, kemudian [2] Siapkan server baru. Update selanjutnya hanya memakai [4] Atomic Release.
 ## 6. Pasang Cloudflare Tunnel
 
 Di Cloudflare Zero Trust:

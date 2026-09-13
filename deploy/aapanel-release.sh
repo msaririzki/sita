@@ -30,6 +30,7 @@ source "$PROFILE_FILE"
 
 DOMAIN="${DOMAIN:?DOMAIN wajib diisi pada profile}"
 APP_DIR="${APP_DIR:-$PROJECT_ROOT}"
+SITE_ROOT="${SITE_ROOT:-$APP_DIR}"
 PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php-fpm-84}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
@@ -155,6 +156,7 @@ doctor_environment() {
 deploy_application() {
     if [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
         APP_DIR="$APP_DIR" \
+            SITE_ROOT="$SITE_ROOT" \
             DOMAIN="$DOMAIN" \
             PHP_BIN="$PHP_BIN" \
             PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
