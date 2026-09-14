@@ -146,6 +146,20 @@ run_privileged() {
     fi
 }
 
+run_as_php_runtime_user() {
+    if [ "$(id -un)" = "$PHP_FPM_RUNTIME_USER" ]; then
+        "$@"
+        return
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        printf 'sudo diperlukan untuk menjalankan Artisan sebagai user PHP-FPM %s.\n' "$PHP_FPM_RUNTIME_USER" >&2
+        return 1
+    fi
+
+    sudo -u "$PHP_FPM_RUNTIME_USER" "$@"
+}
+
 sync_environment() {
     run_privileged env \
         DOMAIN="$DOMAIN" \
@@ -228,6 +242,18 @@ deploy_application() {
         bash deploy/aapanel-deploy.sh
 }
 
+provision_initial_super_admin() {
+    local app_dir
+
+    app_dir="$(active_app_dir)"
+    if [ ! -t 0 ]; then
+        printf 'Bootstrap server baru memerlukan terminal interaktif untuk membuat akun Super Admin pertama.\n' >&2
+        return 1
+    fi
+
+    run_as_php_runtime_user "$PHP_BIN" "$app_dir/artisan" sita:provision-initial-super-admin
+}
+
 security_gate() {
     run_privileged env \
         APP_DIR="$(active_app_dir)" \
@@ -273,23 +299,24 @@ fi
 
 if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '1/7' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
-        phase '2/7' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
-        phase '3/7' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-        phase '4/7' 'Precheck runtime dan aplikasi' doctor_environment
+        phase '1/8' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
+        phase '2/8' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
+        phase '3/8' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+        phase '4/8' 'Precheck runtime dan aplikasi' doctor_environment
     else
         phase '1/6' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
         phase '2/6' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
         phase '3/6' 'Precheck runtime dan aplikasi' doctor_environment
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '5/7' 'Deployment awal dan pemasangan service runtime' deploy_application
+        phase '5/8' 'Deployment awal dan pemasangan service runtime' deploy_application
+        phase '6/8' 'Buat akun Super Admin pertama bila database masih kosong' provision_initial_super_admin
     else
         phase '4/6' 'Deployment aplikasi' deploy_application
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '6/7' 'Validasi sinkronisasi pascadeploy' sync_environment
-        phase '7/7' 'Security gate pascadeploy' security_gate
+        phase '7/8' 'Validasi sinkronisasi pascadeploy' sync_environment
+        phase '8/8' 'Security gate pascadeploy' security_gate
     else
         phase '5/6' 'Validasi sinkronisasi pascadeploy' sync_environment
         phase '6/6' 'Security gate pascadeploy' security_gate

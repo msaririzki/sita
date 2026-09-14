@@ -517,3 +517,10 @@ Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tet
 - **Pemulihan:** service Reverb dinyalakan kembali. Gate ulang selesai dengan exit `0`, dengan service Reverb aktif dan WebSocket upgrade `101`.
 - **Validasi pengguna akhir setelah pemulihan:** pengujian browser dua akun diulang. Pesan `Uji realtime skripsi 20260914074825413` terlihat pada dosen dalam **522 ms**, melalui satu koneksi `wss://sita-aapanel.ikydev.com/app/...`, tanpa navigasi halaman penerima.
 - **Makna skripsi:** eksperimen membuktikan health HTTP saja memberi false negative terhadap gangguan realtime. Kombinasi pemeriksaan service dan handshake WebSocket mendeteksi kondisi tersebut, lalu uji browser menunjukkan layanan benar-benar pulih bagi pengguna.
+
+### E-62 - Provisioning akun Super Admin wajib pada Bootstrap server baru
+
+- **Masalah operasional:** migration pertama hanya membuat struktur tabel. Tanpa akun Super Admin, operator tidak dapat login untuk menambah akun admin, dosen, maupun mahasiswa.
+- **Perbaikan:** alur Bootstrap aaPanel kini memiliki tahap wajib setelah deployment awal: perintah Artisan `sita:provision-initial-super-admin` mendeteksi database tanpa pengguna, meminta nama, email, password, serta konfirmasi password melalui terminal interaktif, lalu membuat role dan akun `super_admin` pertama.
+- **Pengamanan:** password tersembunyi saat diketik, langsung di-hash oleh Laravel, dan tidak disimpan pada profile, `.env`, argument command, maupun log. Perintah menolak terminal noninteraktif pada database kosong. Jika database telah berisi pengguna, tahap ini selesai tanpa membuat akun tambahan, sehingga restore database kampus tidak terganggu.
+- **Validasi otomatis:** tiga skenario Pest lulus: pembuatan Super Admin, penolakan pembuatan akun kedua bila pengguna sudah ada, dan penolakan eksekusi noninteraktif pada database kosong.
