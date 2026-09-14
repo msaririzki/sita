@@ -25,14 +25,57 @@ ok() {
     printf '[OK] %s\n' "$*"
 }
 
-for command in curl sha256sum tar awk; do
-    command -v "$command" >/dev/null 2>&1 || { fail "Command wajib tidak tersedia: ${command}"; exit 1; }
-done
-
 if [ ! -f "$PROFILE_FILE" ]; then
     fail "Profile tidak ditemukan: ${PROFILE_FILE}"
     exit 2
 fi
+
+runtime_is_usable() {
+    local node_binary="$1"
+    local npm_binary="$2"
+    local runtime_path
+
+    [ -x "$node_binary" ] && [ -x "$npm_binary" ] || return 1
+    runtime_path="$(dirname "$node_binary"):${PATH}"
+
+    PATH="$runtime_path" "$node_binary" -e '
+        const [major, minor] = process.versions.node.split(".").map(Number);
+        process.exit(major === 22 && minor >= 12 ? 0 : 1);
+    ' >/dev/null 2>&1 || return 1
+    PATH="$runtime_path" "$npm_binary" --version >/dev/null 2>&1
+}
+
+write_profile_runtime() {
+    local node_binary="$1"
+    local npm_binary="$2"
+    local profile_tmp
+
+    profile_tmp="$(mktemp "${PROJECT_ROOT}/deploy/.aapanel-profile.tmp.XXXXXX")"
+    awk -v node_bin="$node_binary" -v npm_bin="$npm_binary" '
+        index($0, "NODE_BIN=") == 1 { print "NODE_BIN=" node_bin; node_seen=1; next }
+        index($0, "NPM_BIN=") == 1 { print "NPM_BIN=" npm_bin; npm_seen=1; next }
+        { print }
+        END {
+            if (!node_seen) print "NODE_BIN=" node_bin
+            if (!npm_seen) print "NPM_BIN=" npm_bin
+        }
+    ' "$PROFILE_FILE" > "$profile_tmp"
+    mv "$profile_tmp" "$PROFILE_FILE"
+    chmod 600 "$PROFILE_FILE"
+}
+
+current_node="${INSTALL_ROOT}/current/bin/node"
+current_npm="${INSTALL_ROOT}/current/bin/npm"
+if runtime_is_usable "$current_node" "$current_npm"; then
+    write_profile_runtime "$current_node" "$current_npm"
+    ok "Menggunakan ulang Node $($current_node --version) di ${INSTALL_ROOT}/current"
+    ok 'Profile diperbarui; runtime Node bersama tidak diunduh ulang.'
+    exit 0
+fi
+
+for command in curl sha256sum tar awk; do
+    command -v "$command" >/dev/null 2>&1 || { fail "Command wajib tidak tersedia: ${command}"; exit 1; }
+done
 
 case "$(uname -m)" in
     x86_64) node_arch='x64' ;;
@@ -76,24 +119,8 @@ run_privileged ln -sfn "$target_directory" "${INSTALL_ROOT}/current"
 node_binary="${INSTALL_ROOT}/current/bin/node"
 npm_binary="${INSTALL_ROOT}/current/bin/npm"
 export PATH="${INSTALL_ROOT}/current/bin:${PATH}"
-"$node_binary" -e '
-    const [major, minor] = process.versions.node.split(".").map(Number);
-    process.exit(major === 22 && minor >= 12 ? 0 : 1);
-' || { fail "Node hasil instalasi tidak memenuhi minimal 22.12: $($node_binary --version)"; exit 1; }
-"$npm_binary" --version >/dev/null
-
-profile_tmp="$(mktemp "${PROJECT_ROOT}/deploy/.aapanel-profile.tmp.XXXXXX")"
-awk -v node_bin="$node_binary" -v npm_bin="$npm_binary" '
-    index($0, "NODE_BIN=") == 1 { print "NODE_BIN=" node_bin; node_seen=1; next }
-    index($0, "NPM_BIN=") == 1 { print "NPM_BIN=" npm_bin; npm_seen=1; next }
-    { print }
-    END {
-        if (!node_seen) print "NODE_BIN=" node_bin
-        if (!npm_seen) print "NPM_BIN=" npm_bin
-    }
-' "$PROFILE_FILE" > "$profile_tmp"
-mv "$profile_tmp" "$PROFILE_FILE"
-chmod 600 "$PROFILE_FILE"
+runtime_is_usable "$node_binary" "$npm_binary" || { fail "Node hasil instalasi tidak memenuhi minimal 22.12: $($node_binary --version)"; exit 1; }
+write_profile_runtime "$node_binary" "$npm_binary"
 
 ok "Node $($node_binary --version) siap di ${INSTALL_ROOT}/current"
 ok 'Profile diperbarui; Check berikutnya otomatis memakai runtime Node khusus SITA.'

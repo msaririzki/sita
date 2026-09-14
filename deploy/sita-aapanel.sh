@@ -65,12 +65,22 @@ command_available() {
 }
 
 node_runtime_missing() {
-    local node_bin npm_bin
+    local node_bin npm_bin runtime_path
     node_bin="$(profile_value NODE_BIN)"
     npm_bin="$(profile_value NPM_BIN)"
     node_bin="${node_bin:-node}"
     npm_bin="${npm_bin:-npm}"
-    ! command_available "$node_bin" || ! command_available "$npm_bin"
+
+    command_available "$node_bin" && command_available "$npm_bin" || return 0
+    runtime_path="$(dirname "$node_bin"):${PATH}"
+
+    PATH="$runtime_path" "$node_bin" -e '
+        const [major, minor] = process.versions.node.split(".").map(Number);
+        process.exit(major === 22 && minor >= 12 ? 0 : 1);
+    ' >/dev/null 2>&1 || return 0
+    PATH="$runtime_path" "$npm_bin" --version >/dev/null 2>&1 || return 0
+
+    return 1
 }
 
 php_fileinfo_missing() {
