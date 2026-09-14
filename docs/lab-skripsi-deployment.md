@@ -509,3 +509,11 @@ Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tet
 - **Prosedur:** alat uji menunggu koneksi Echo berstatus `connected` serta subscription private mentorship aktif pada kedua halaman. Mahasiswa mengirim pesan unik `Uji realtime skripsi 20260914074605943`; halaman dosen dibiarkan terbuka tanpa `reload`, `goto`, atau navigasi Inertia sesudah thread dibuka.
 - **Hasil:** POST pesan merespons `302` ke `/mahasiswa/pesan?thread=2`, yaitu redirect normal Laravel setelah penyimpanan. Pesan terlihat pada halaman dosen dalam **488 ms**. Pengamatan Playwright merekam satu koneksi `wss://sita-aapanel.ikydev.com/app/...`, dan jumlah navigasi halaman penerima setelah thread terbuka adalah **0**.
 - **Makna skripsi:** healthcheck dan WebSocket handshake kini dilengkapi bukti perilaku pengguna akhir: pesan benar-benar diterima pada browser akun kedua tanpa refresh. Ini dapat menjadi baseline normal sebelum eksperimen gangguan terkontrol Reverb, proxy Nginx, atau konfigurasi frontend dijalankan dan dipulihkan.
+
+### E-61 - Gangguan Reverb terkontrol pada baseline aaPanel publik
+
+- **Kondisi awal:** sesudah E-60, Integration Gate dipanggil dengan profile deployment aktif dan release `20260913T182704Z-76a4f4c550a4`. Gangguan hanya dilakukan pada VM lab `sita-aapanel`; server kampus tidak diakses maupun diubah.
+- **Gangguan dan deteksi:** service `sita-sita-aapanel-ikydev-com-reverb.service` dihentikan sementara. Gate selesai dengan exit `1`: healthcheck origin HTTP, public storage, edge HTTP, PHP-FPM, queue, dan scheduler tetap lulus; tetapi service Reverb gagal setelah 10 pemeriksaan dan WebSocket upgrade gagal dengan HTTP `404`.
+- **Pemulihan:** service Reverb dinyalakan kembali. Gate ulang selesai dengan exit `0`, dengan service Reverb aktif dan WebSocket upgrade `101`.
+- **Validasi pengguna akhir setelah pemulihan:** pengujian browser dua akun diulang. Pesan `Uji realtime skripsi 20260914074825413` terlihat pada dosen dalam **522 ms**, melalui satu koneksi `wss://sita-aapanel.ikydev.com/app/...`, tanpa navigasi halaman penerima.
+- **Makna skripsi:** eksperimen membuktikan health HTTP saja memberi false negative terhadap gangguan realtime. Kombinasi pemeriksaan service dan handshake WebSocket mendeteksi kondisi tersebut, lalu uji browser menunjukkan layanan benar-benar pulih bagi pengguna.
