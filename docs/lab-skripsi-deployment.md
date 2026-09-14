@@ -555,3 +555,17 @@ Kasus nyata yang sudah tersedia adalah chat SITA yang pernah menyimpan pesan tet
 - **Hasil Docker:** lima dari lima pemeriksaan dinyatakan siap; Integration Gate dan Security Gate lulus pada seluruh pengulangan. Waktu keputusan berkisar `10.687-15.810 ms` dengan rata-rata `12.668 ms`; false positive `0/5`.
 - **Hasil aaPanel:** lima dari lima pemeriksaan dinyatakan siap; sinkronisasi GUI/runtime dan precheck lulus. Waktu keputusan berkisar `2.042-3.073 ms` dengan rata-rata `2.303 ms`; false positive `0/5`. Peringatan PHP-FPM yang dipakai dua vhost tetap dicatat sebagai guard keselamatan dan bukan kegagalan.
 - **Bukti:** log setiap pengulangan dicatat pada `docs/data-mentah-eksperimen-deployment-sita.md`. Nilai waktu ini adalah durasi Console, bukan waktu respon antarmuka pengguna atau latency jaringan.
+
+### E-67 - Pilot G-01 Docker: service Reverb dihentikan
+
+- **Gangguan terkontrol:** container `reverb` dihentikan pada VM Docker lab. Tidak ada source, database, maupun konfigurasi publik yang diubah.
+- **Deteksi:** Console `check` selesai dengan exit `1` dalam `8.572 ms`. Integration Gate menyatakan container Reverb tidak ditemukan dan WebSocket upgrade gagal akibat timeout. Dengan demikian gangguan terdeteksi, bukan dinyatakan siap.
+- **Pemulihan:** container dinyalakan kembali melalui `docker compose start reverb`. Check berikutnya lulus dalam `17.010 ms`, container kembali aktif, dan WebSocket upgrade berhasil.
+- **Interpretasi:** skenario ini tidak relevan untuk rollback source, karena gangguan berupa service runtime yang dihentikan manual dan bukan candidate release. Hasil pilot ini menjadi pola eksekusi untuk empat pengulangan Docker berikutnya serta skenario aaPanel yang setara.
+
+### E-68 - False negative G-01 aaPanel ditemukan dan diperbaiki sebelum pengulangan resmi
+
+- **Temuan:** pada pilot G-01 aaPanel, service Reverb dihentikan. Mode `check` lama hanya menjalankan synchronization check dan doctor; keduanya menampilkan service yang mati sebagai peringatan, lalu exit `0` dalam `2.008 ms`. Dengan demikian kondisi tersebut adalah false negative yang tidak boleh dimasukkan ke hasil T1 resmi.
+- **Pemulihan langsung:** Reverb dinyalakan kembali dan check ulang menyatakan siap dalam `1.959 ms`. Tidak ada source, database, maupun konfigurasi vhost yang diubah pada gangguan ini.
+- **Perbaikan:** sesudah Bootstrap atau ketika unit/runtime release sudah ada, mode `check` sekarang juga menjalankan Integration Gate read-only. Gate memverifikasi health endpoint, storage, PHP-FPM, Reverb, queue, scheduler, bundle Reverb, serta WebSocket. Server yang benar-benar baru tanpa release dan tanpa unit service tetap memakai Check pre-bootstrap agar alur instalasi awal tidak terhambat.
+- **Status data:** baris pilot ini disimpan sebagai bukti kualitas rancang bangun, diberi status `Pilot-invalid`, dan dikeluarkan dari perhitungan tingkat deteksi/fase eksperimen resmi. G-01 aaPanel akan diulang dari awal setelah perbaikan tervalidasi.

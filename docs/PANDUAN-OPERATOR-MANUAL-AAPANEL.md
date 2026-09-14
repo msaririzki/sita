@@ -149,6 +149,8 @@ bash deploy/sita.sh aapanel check
 
 Check tidak menulis aplikasi. Pada server benar-benar baru, `[FAIL]` permission `storage` dan `bootstrap/cache` masih wajar sebelum Bootstrap karena source baru belum menyiapkan direktori runtime. Tinjau hasilnya untuk memastikan domain, vhost, PHP, dan `.env` benar. Menu Check dapat menawarkan perbaikan terisolasi untuk `fileinfo` dan Node.js; Bootstrap juga memastikan ulang keduanya serta menyiapkan permission runtime sebelum deploy.
 
+Sesudah Bootstrap atau setelah service SITA pernah dipasang, Check juga menjalankan Integration Gate read-only. Karena itu Reverb, queue, scheduler, health endpoint, public storage, dan WebSocket harus lulus; service yang mati tidak lagi hanya dicatat sebagai peringatan. Pada server yang benar-benar belum memiliki release maupun unit service, tahap integrasi dilewati dan akan dijalankan oleh Bootstrap.
+
 Setelah hasil Check ditinjau, jalankan deploy awal:
 
 ```bash

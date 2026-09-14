@@ -346,6 +346,46 @@ doctor_environment() {
         bash deploy/aapanel-doctor.sh
 }
 
+integration_gate() {
+    run_privileged env \
+        APP_DIR="$(active_app_dir)" \
+        DOMAIN="$DOMAIN" \
+        PHP_BIN="$PHP_BIN" \
+        PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
+        PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        HEALTHCHECK_URL="$HEALTHCHECK_URL" \
+        PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
+        HTTP_PROBE_MODE="$HTTP_PROBE_MODE" \
+        ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
+        ORIGIN_PROBE_HTTP_PORT="$ORIGIN_PROBE_HTTP_PORT" \
+        EDGE_ACCESS_POLICY="$EDGE_ACCESS_POLICY" \
+        CHECK_SERVICES=true \
+        CHECK_WEBSOCKET=true \
+        bash deploy/aapanel-integration-gate.sh
+}
+
+runtime_integration_is_expected() {
+    local slug service
+
+    # A fresh aaPanel setup has no runtime service or active atomic release
+    # yet, so Check remains a pre-bootstrap readiness check there. Once a
+    # release or any SITA unit exists, a stopped Reverb/queue/scheduler is a
+    # deployment failure and must not be downgraded to a warning.
+    if [ -f "${CURRENT_LINK}/artisan" ]; then
+        return 0
+    fi
+
+    slug="$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')"
+    for service in reverb queue schedule; do
+        if run_privileged test -e "/etc/systemd/system/sita-${slug}-${service}.service" \
+            || run_privileged test -e "/etc/systemd/system/sita-${slug}-${service}.timer"; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 deploy_application() {
     if [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
         APP_DIR="$APP_DIR" \
@@ -518,8 +558,13 @@ if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
         printf '%bRILIS DINYATAKAN SIAP%b\n' "$green" "$reset"
     fi
 else
-    phase '1/2' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-    phase '2/2' 'Precheck runtime dan aplikasi' doctor_environment
+    phase '1/3' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+    phase '2/3' 'Precheck runtime dan aplikasi' doctor_environment
+    if runtime_integration_is_expected; then
+        phase '3/3' 'Validasi integrasi runtime dan chat realtime' integration_gate
+    else
+        printf 'Runtime service belum dipasang; validasi integrasi akan dijalankan setelah Bootstrap.\n'
+    fi
     printf '%bPEMERIKSAAN DINYATAKAN SIAP%b\n' "$green" "$reset"
 fi
 
