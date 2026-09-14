@@ -198,8 +198,35 @@ set_env_value() {
     mv "$temporary_file" "$PROJECT_ROOT/.env"
 }
 
+port_in_use() {
+    local port="$1"
+
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .
+        return
+    fi
+
+    timeout 1 bash -c "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1
+}
+
+find_available_reverb_port() {
+    local domain="$1" seed offset candidate attempt
+
+    seed="$(printf '%s' "$domain" | cksum | awk '{print $1}')"
+    offset=$((seed % 1000))
+    for ((attempt = 0; attempt < 1000; attempt++)); do
+        candidate=$((18000 + ((offset + attempt) % 1000)))
+        if ! port_in_use "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 create_environment() {
-    local database_host database_port database_name database_username database_password
+    local database_host database_port database_name database_username database_password reverb_internal_port
 
     if [ -f "$PROJECT_ROOT/.env" ]; then
         printf '%b.env sudah tersedia; tidak ditimpa.%b\n' "$yellow" "$reset"
@@ -253,10 +280,11 @@ create_environment() {
     set_env_value REVERB_PORT 443
     set_env_value REVERB_SCHEME https
     set_env_value REVERB_INTERNAL_HOST 127.0.0.1
-    set_env_value REVERB_INTERNAL_PORT 8080
+    reverb_internal_port="$(profile_value REVERB_INTERNAL_PORT)"
+    set_env_value REVERB_INTERNAL_PORT "$reverb_internal_port"
     set_env_value REVERB_INTERNAL_SCHEME http
     set_env_value REVERB_SERVER_HOST 127.0.0.1
-    set_env_value REVERB_SERVER_PORT 8080
+    set_env_value REVERB_SERVER_PORT "$reverb_internal_port"
     set_env_value REVERB_ALLOWED_ORIGINS "$(profile_value DOMAIN)"
     set_env_value VITE_REVERB_HOST "$(profile_value DOMAIN)"
     set_env_value VITE_REVERB_PORT 443
@@ -270,7 +298,7 @@ create_environment() {
 }
 
 create_profile() {
-    local domain public_url site_root
+    local domain public_url site_root reverb_internal_port
 
     if [ -f "$PROFILE_FILE" ]; then
         printf '%bProfile sudah tersedia:%b %s\n' "$yellow" "$reset" "$PROFILE_FILE"
@@ -294,6 +322,11 @@ create_profile() {
         return 1
     fi
 
+    if ! reverb_internal_port="$(find_available_reverb_port "$domain")"; then
+        printf '%bTidak ada port internal Reverb kosong dalam rentang 18000-18999.%b\n' "$red" "$reset" >&2
+        return 1
+    fi
+
     cat > "$PROFILE_FILE" <<EOF
 # Dibuat oleh deploy/sita.sh. Tidak berisi password atau secret Laravel.
 DOMAIN=${domain}
@@ -311,6 +344,9 @@ HTTP_PROBE_MODE=auto
 ORIGIN_PROBE_ADDRESS=127.0.0.1
 ORIGIN_PROBE_HTTP_PORT=80
 CHECK_EDGE_HTTP=false
+# Port Reverb khusus domain ini dipilih otomatis. Tidak dibuka ke publik; Nginx
+# meneruskannya dari WSS/HTTPS pada port 443.
+REVERB_INTERNAL_PORT=${reverb_internal_port}
 # Jalur publik Cloudflare/Tunnel dicatat bila belum siap; ubah menjadi required
 # jika akses publik harus sehat sebelum candidate dapat diaktifkan.
 EDGE_ACCESS_POLICY=warn

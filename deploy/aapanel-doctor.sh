@@ -13,6 +13,7 @@ DOMAIN="${DOMAIN:-}"
 CHECK_SERVICES="${CHECK_SERVICES:-false}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-}"
+REVERB_INTERNAL_PORT="${REVERB_INTERNAL_PORT:-}"
 
 FAILED=0
 
@@ -182,7 +183,15 @@ if [ -f .env ]; then
         [ -n "$REVERB_HOST_VALUE" ] && ok "REVERB_HOST terisi: $REVERB_HOST_VALUE" || fail "REVERB_HOST wajib untuk Reverb"
         [ "$REVERB_PORT_VALUE" = "443" ] && ok "REVERB_PORT=443 untuk browser HTTPS" || warn "REVERB_PORT sebaiknya 443 saat proxy lewat Nginx HTTPS, sekarang: ${REVERB_PORT_VALUE:-kosong}"
         [ "$REVERB_INTERNAL_HOST_VALUE" = "127.0.0.1" ] && ok "REVERB_INTERNAL_HOST=127.0.0.1" || warn "REVERB_INTERNAL_HOST sebaiknya 127.0.0.1, sekarang: ${REVERB_INTERNAL_HOST_VALUE:-kosong}"
-        [ "$REVERB_INTERNAL_PORT_VALUE" = "8080" ] && ok "REVERB_INTERNAL_PORT=8080" || warn "REVERB_INTERNAL_PORT sebaiknya 8080, sekarang: ${REVERB_INTERNAL_PORT_VALUE:-kosong}"
+        if [[ "$REVERB_INTERNAL_PORT_VALUE" =~ ^[0-9]+$ ]] && [ "$REVERB_INTERNAL_PORT_VALUE" -ge 1024 ] && [ "$REVERB_INTERNAL_PORT_VALUE" -le 65535 ]; then
+            if [ -n "$REVERB_INTERNAL_PORT" ] && [ "$REVERB_INTERNAL_PORT_VALUE" != "$REVERB_INTERNAL_PORT" ]; then
+                fail "REVERB_INTERNAL_PORT .env (${REVERB_INTERNAL_PORT_VALUE}) tidak sesuai profile (${REVERB_INTERNAL_PORT})"
+            else
+                ok "REVERB_INTERNAL_PORT=${REVERB_INTERNAL_PORT_VALUE}"
+            fi
+        else
+            fail "REVERB_INTERNAL_PORT harus berupa port nonprivileged 1024-65535, sekarang: ${REVERB_INTERNAL_PORT_VALUE:-kosong}"
+        fi
         [ "$REVERB_INTERNAL_SCHEME_VALUE" = "http" ] && ok "REVERB_INTERNAL_SCHEME=http" || warn "REVERB_INTERNAL_SCHEME sebaiknya http, sekarang: ${REVERB_INTERNAL_SCHEME_VALUE:-kosong}"
     fi
 

@@ -43,6 +43,7 @@ PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php-fpm-84}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-$PHP_FPM_RUNTIME_USER}"
 PHP_FPM_SOCKET="${PHP_FPM_SOCKET:-/tmp/php-cgi-84.sock}"
+REVERB_INTERNAL_PORT="${REVERB_INTERNAL_PORT:-}"
 NGINX_CONFIG="${NGINX_CONFIG:-/www/server/panel/vhost/nginx/${DOMAIN}.conf}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-https://${DOMAIN}/up}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HEALTHCHECK_URL%/up}}"
@@ -80,6 +81,107 @@ if [ "$APP_DIR" != "$PROJECT_ROOT" ]; then
     printf 'APP_DIR profile (%s) harus sama dengan lokasi runner (%s).\n' "$APP_DIR" "$PROJECT_ROOT" >&2
     exit 2
 fi
+
+profile_set_value() {
+    local key="$1" value="$2" temporary_file
+
+    temporary_file="$(mktemp "${PROFILE_FILE}.tmp.XXXXXX")"
+    awk -v key="$key" -v value="$value" '
+        index($0, key "=") == 1 { print key "=" value; seen=1; next }
+        { print }
+        END { if (!seen) print key "=" value }
+    ' "$PROFILE_FILE" > "$temporary_file"
+    mv "$temporary_file" "$PROFILE_FILE"
+    chmod 600 "$PROFILE_FILE"
+}
+
+environment_value() {
+    local key="$1"
+
+    [ -f "$APP_DIR/.env" ] || return
+    grep -E "^${key}=" "$APP_DIR/.env" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
+}
+
+environment_set_value() {
+    local key="$1" value="$2" temporary_file
+
+    [ -f "$APP_DIR/.env" ] || return 0
+    temporary_file="$(mktemp "${APP_DIR}/.env.tmp.XXXXXX")"
+    awk -v key="$key" -v value="$value" '
+        index($0, key "=") == 1 { print key "=\"" value "\""; seen=1; next }
+        { print }
+        END { if (!seen) print key "=\"" value "\"" }
+    ' "$APP_DIR/.env" > "$temporary_file"
+    mv "$temporary_file" "$APP_DIR/.env"
+    chmod 640 "$APP_DIR/.env"
+}
+
+port_is_listening() {
+    local port="$1"
+
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .
+        return
+    fi
+
+    timeout 1 bash -c "</dev/tcp/127.0.0.1/${port}" >/dev/null 2>&1
+}
+
+port_is_owned_by_current_reverb_service() {
+    local port="$1" service pid
+
+    service="sita-$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')-reverb.service"
+    pid="$(run_privileged systemctl show "$service" -p MainPID --value 2>/dev/null || true)"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    run_privileged ss -ltnp "sport = :${port}" 2>/dev/null | grep -Fq "pid=${pid},"
+}
+
+find_available_reverb_port() {
+    local seed offset candidate attempt
+
+    seed="$(printf '%s' "$DOMAIN" | cksum | awk '{print $1}')"
+    offset=$((seed % 1000))
+    for ((attempt = 0; attempt < 1000; attempt++)); do
+        candidate=$((18000 + ((offset + attempt) % 1000)))
+        if ! port_is_listening "$candidate"; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+ensure_reverb_port_configuration() {
+    local existing_port selected_port
+
+    if [ -n "$REVERB_INTERNAL_PORT" ]; then
+        if [[ ! "$REVERB_INTERNAL_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_INTERNAL_PORT" -lt 1024 ] || [ "$REVERB_INTERNAL_PORT" -gt 65535 ]; then
+            printf 'REVERB_INTERNAL_PORT pada profile harus berupa port nonprivileged 1024-65535.\n' >&2
+            return 1
+        fi
+        return 0
+    fi
+
+    existing_port="$(environment_value REVERB_INTERNAL_PORT)"
+    selected_port="$existing_port"
+    if [[ ! "$selected_port" =~ ^[0-9]+$ ]] || [ "$selected_port" -lt 1024 ] || [ "$selected_port" -gt 65535 ]; then
+        selected_port=8080
+    fi
+
+    if port_is_listening "$selected_port" && ! port_is_owned_by_current_reverb_service "$selected_port"; then
+        selected_port="$(find_available_reverb_port)" || {
+            printf 'Tidak ada port internal Reverb kosong dalam rentang 18000-18999.\n' >&2
+            return 1
+        }
+    fi
+
+    REVERB_INTERNAL_PORT="$selected_port"
+    profile_set_value REVERB_INTERNAL_PORT "$REVERB_INTERNAL_PORT"
+    environment_set_value REVERB_INTERNAL_PORT "$REVERB_INTERNAL_PORT"
+    environment_set_value REVERB_SERVER_PORT "$REVERB_INTERNAL_PORT"
+    printf '[OK] Port internal Reverb dikonfigurasi: %s\n' "$REVERB_INTERNAL_PORT"
+}
 
 case "$DEPLOYMENT_STRATEGY" in
     in-place|atomic) ;;
@@ -192,6 +294,7 @@ sync_environment() {
         NPM_BIN="$NPM_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         PHP_FPM_SOCKET="$PHP_FPM_SOCKET" \
+        REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_SERVICES=true \
         bash deploy/aapanel-sync.sh
@@ -204,6 +307,7 @@ doctor_environment() {
         NODE_BIN="$NODE_BIN" \
         NPM_BIN="$NPM_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
+        REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
         HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         CHECK_SERVICES=true \
         PUBLIC_BASE_URL="$PUBLIC_BASE_URL" \
@@ -226,6 +330,7 @@ deploy_application() {
             PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
             PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
             PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+            REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
             HEALTHCHECK_URL="$HEALTHCHECK_URL" \
             NGINX_CONFIG="$NGINX_CONFIG" \
             RELEASE_ROOT="$RELEASE_ROOT" \
@@ -247,8 +352,9 @@ deploy_application() {
         NPM_BIN="$NPM_BIN" \
         PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
-        PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
-        HEALTHCHECK_URL="$HEALTHCHECK_URL" \
+            PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+            REVERB_SERVER_PORT="$REVERB_INTERNAL_PORT" \
+            HEALTHCHECK_URL="$HEALTHCHECK_URL" \
         RUN_MIGRATIONS="$RUN_MIGRATIONS" \
         MIGRATION_MODE="$MIGRATION_MODE" \
         DB_BACKUP_DIR="$DB_BACKUP_DIR" \
@@ -335,12 +441,14 @@ prepare_runtime_directories() {
 prepare_nginx_integration() {
     DOMAIN="$DOMAIN" \
         NGINX_CONFIG="$NGINX_CONFIG" \
+        REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
         MANAGE_NGINX_INTEGRATION="$MANAGE_NGINX_INTEGRATION" \
         bash "$PROJECT_ROOT/deploy/aapanel-nginx-integration.sh"
 }
 
 banner
 ensure_privileged_access
+ensure_reverb_port_configuration
 if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
     phase '1/4' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
     phase '2/4' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment

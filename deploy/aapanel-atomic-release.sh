@@ -15,6 +15,7 @@ NPM_BIN="${NPM_BIN:-npm}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:?PHP_FPM_SERVICE wajib diisi}"
 PHP_FPM_RUNTIME_GROUP="${PHP_FPM_RUNTIME_GROUP:-www}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
+REVERB_INTERNAL_PORT="${REVERB_INTERNAL_PORT:-8080}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:?HEALTHCHECK_URL wajib diisi}"
 NGINX_CONFIG="${NGINX_CONFIG:?NGINX_CONFIG wajib diisi}"
 NGINX_BIN="${NGINX_BIN:-/www/server/nginx/sbin/nginx}"
@@ -51,6 +52,11 @@ fi
 
 if [[ ! "$RELEASE_KEEP" =~ ^[1-9][0-9]*$ ]]; then
     printf 'RELEASE_KEEP harus berupa bilangan bulat positif. Nilai sekarang: %s\n' "$RELEASE_KEEP" >&2
+    exit 2
+fi
+
+if [[ ! "$REVERB_INTERNAL_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_INTERNAL_PORT" -lt 1024 ] || [ "$REVERB_INTERNAL_PORT" -gt 65535 ]; then
+    printf 'REVERB_INTERNAL_PORT harus berupa port nonprivileged 1024-65535.\n' >&2
     exit 2
 fi
 
@@ -125,6 +131,7 @@ restart_runtime() {
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
         SERVICE_USER="$PHP_FPM_RUNTIME_USER" \
         SERVICE_GROUP="$PHP_FPM_RUNTIME_GROUP" \
+        REVERB_SERVER_PORT="$REVERB_INTERNAL_PORT" \
         bash "$SCRIPT_ROOT/deploy/aapanel-services.sh"
     restart_php_fpm
 }
@@ -286,6 +293,7 @@ create_candidate() {
             PHP_FPM_SERVICE="$PHP_FPM_SERVICE" \
             PHP_FPM_RUNTIME_GROUP="$PHP_FPM_RUNTIME_GROUP" \
             PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+            REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
             HEALTHCHECK_URL="$HEALTHCHECK_URL" \
             NGINX_CONFIG="$NGINX_CONFIG" \
             NGINX_BIN="$NGINX_BIN" \
@@ -574,6 +582,7 @@ verify_candidate() {
         SITE_ROOT="$SITE_ROOT" \
         PHP_BIN="$PHP_BIN" \
         PHP_FPM_RUNTIME_USER="$PHP_FPM_RUNTIME_USER" \
+        REVERB_INTERNAL_PORT="$REVERB_INTERNAL_PORT" \
         NGINX_CONFIG="$NGINX_CONFIG" \
         CHECK_SERVICES=true \
         bash "$SCRIPT_ROOT/deploy/aapanel-sync.sh"

@@ -46,6 +46,11 @@ if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
     exit 1
 fi
 
+if [[ ! "$REVERB_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_PORT" -lt 1024 ] || [ "$REVERB_PORT" -gt 65535 ]; then
+    printf 'REVERB_SERVER_PORT harus berupa port nonprivileged 1024-65535.\n' >&2
+    exit 2
+fi
+
 SERVICE_SLUG="$(printf '%s' "$DOMAIN" | tr -cs 'A-Za-z0-9' '-')"
 REVERB_SERVICE="sita-${SERVICE_SLUG}-reverb.service"
 QUEUE_SERVICE="sita-${SERVICE_SLUG}-queue.service"
@@ -138,6 +143,12 @@ printf '\nService aktif:\n'
 run_privileged systemctl --no-pager --full status "$REVERB_SERVICE" "$QUEUE_SERVICE" "$SCHEDULER_TIMER" || true
 
 printf '\nCek ringkas:\n'
-systemctl is-active "$REVERB_SERVICE" || true
-systemctl is-active "$QUEUE_SERVICE" || true
-systemctl is-active "$SCHEDULER_TIMER" || true
+for service in "$REVERB_SERVICE" "$QUEUE_SERVICE" "$SCHEDULER_TIMER"; do
+    if run_privileged systemctl is-active --quiet "$service"; then
+        printf 'active: %s\n' "$service"
+    else
+        printf 'Service tidak aktif setelah pemasangan: %s\n' "$service" >&2
+        run_privileged journalctl -u "$service" -n 30 --no-pager >&2 || true
+        exit 1
+    fi
+done

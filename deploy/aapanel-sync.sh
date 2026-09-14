@@ -11,6 +11,7 @@ SITE_ROOT="${SITE_ROOT:-$APP_DIR}"
 PHP_BIN="${PHP_BIN:-/www/server/php/84/bin/php}"
 PHP_FPM_RUNTIME_USER="${PHP_FPM_RUNTIME_USER:-www}"
 PHP_FPM_SOCKET="${PHP_FPM_SOCKET:-}"
+REVERB_INTERNAL_PORT="${REVERB_INTERNAL_PORT:-8080}"
 NGINX_CONFIG="${NGINX_CONFIG:-/www/server/panel/vhost/nginx/${DOMAIN}.conf}"
 NGINX_VHOST_DIR="${NGINX_VHOST_DIR:-$(dirname "$NGINX_CONFIG")}"
 NGINX_BIN="${NGINX_BIN:-/www/server/nginx/sbin/nginx}"
@@ -132,6 +133,11 @@ if [[ "$PHP_FPM_SOCKET" != /tmp/php-cgi-[0-9][0-9].sock ]]; then
     exit 2
 fi
 
+if [[ ! "$REVERB_INTERNAL_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_INTERNAL_PORT" -lt 1024 ] || [ "$REVERB_INTERNAL_PORT" -gt 65535 ]; then
+    printf 'REVERB_INTERNAL_PORT harus berupa port nonprivileged 1024-65535.\n' >&2
+    exit 2
+fi
+
 PHP_FPM_INCLUDE="enable-php-$(basename "$(dirname "$(dirname "$PHP_BIN")")").conf"
 PHP_FPM_INCLUDE_PATH="/www/server/nginx/conf/${PHP_FPM_INCLUDE}"
 
@@ -187,10 +193,10 @@ if read_effective_nginx_config 2>/dev/null; then
         fail "Vhost belum memakai socket PHP-FPM yang diharapkan: ${PHP_FPM_SOCKET}"
     fi
 
-    if grep -Fq 'proxy_pass http://127.0.0.1:8080;' <<<"$config_content"; then
-        ok "Proxy Reverb tetap internal"
+    if grep -Fq "proxy_pass http://127.0.0.1:${REVERB_INTERNAL_PORT};" <<<"$config_content"; then
+        ok "Proxy Reverb internal sesuai port ${REVERB_INTERNAL_PORT}"
     else
-        warn "Proxy Reverb internal tidak ditemukan. Wajib bila BROADCAST_CONNECTION=reverb."
+        warn "Proxy Reverb internal pada port ${REVERB_INTERNAL_PORT} tidak ditemukan. Wajib bila BROADCAST_CONNECTION=reverb."
     fi
 else
     fail "Vhost Nginx tidak dapat dibaca: ${NGINX_CONFIG}"

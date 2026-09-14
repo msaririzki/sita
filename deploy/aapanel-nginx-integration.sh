@@ -8,6 +8,7 @@ DOMAIN="${DOMAIN:?Isi DOMAIN sebelum memasang integrasi Nginx aaPanel}"
 NGINX_CONFIG="${NGINX_CONFIG:-/www/server/panel/vhost/nginx/${DOMAIN}.conf}"
 NGINX_BIN="${NGINX_BIN:-/www/server/nginx/sbin/nginx}"
 MANAGE_NGINX_INTEGRATION="${MANAGE_NGINX_INTEGRATION:-true}"
+REVERB_INTERNAL_PORT="${REVERB_INTERNAL_PORT:-8080}"
 VHOST_DIRECTORY="$(dirname "$NGINX_CONFIG")"
 EXTENSION_DIRECTORY="${AAPANEL_NGINX_EXTENSION_DIR:-${VHOST_DIRECTORY}/extension/${DOMAIN}}"
 FRAGMENT_FILE="${EXTENSION_DIRECTORY}/sita-integration.conf"
@@ -20,6 +21,11 @@ fi
 
 if [[ "$NGINX_CONFIG" != /* ]] || [[ "$EXTENSION_DIRECTORY" != /* ]] || [[ "$BACKUP_DIRECTORY" != /* ]]; then
     printf 'Path konfigurasi Nginx harus absolut.\n' >&2
+    exit 2
+fi
+
+if [[ ! "$REVERB_INTERNAL_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_INTERNAL_PORT" -lt 1024 ] || [ "$REVERB_INTERNAL_PORT" -gt 65535 ]; then
+    printf 'REVERB_INTERNAL_PORT harus berupa port nonprivileged 1024-65535.\n' >&2
     exit 2
 fi
 
@@ -91,7 +97,7 @@ location ~ ^/(app|apps)(?:/|$) {
     proxy_set_header Connection "Upgrade";
     proxy_read_timeout 3600;
     proxy_send_timeout 3600;
-    proxy_pass http://127.0.0.1:8080;
+    proxy_pass http://127.0.0.1:__SITA_REVERB_INTERNAL_PORT__;
 }
 
 location ~ /\.(?!well-known).* {
@@ -102,6 +108,7 @@ location ~* ^/(?:app|bootstrap|config|database|deploy|docs|resources|routes|stor
     deny all;
 }
 EOF
+sed -i "s/__SITA_REVERB_INTERNAL_PORT__/${REVERB_INTERNAL_PORT}/g" "$temporary_file"
 
 if run_privileged test -f "$FRAGMENT_FILE" && run_privileged cmp -s "$temporary_file" "$FRAGMENT_FILE"; then
     printf '[OK] Integrasi Nginx SITA sudah sinkron: %s\n' "$FRAGMENT_FILE"
