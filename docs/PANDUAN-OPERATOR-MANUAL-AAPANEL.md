@@ -102,13 +102,11 @@ cd /www/wwwroot/sita-aapanel.ikydev.com
 sudo git clone -b codex/dependency-audit-p1 --depth=1 https://github.com/msaririzki/sita.git sita
 sudo chown -R "$(id -un)":www sita
 sudo find sita -type d -exec chmod 750 {} +
-sudo find sita -type f -exec chmod 640 {} +
-sudo find sita/deploy -type f -name '*.sh' -exec chmod 750 {} +
 cd sita
 bash deploy/sita.sh
 ```
 
-aaPanel umumnya membuat folder Website dengan pemilik `www`, sehingga `git clone` langsung oleh akun SSH non-root dapat ditolak. Perintah di atas memakai hak administrator hanya untuk membuat checkout, lalu memberikan kepemilikan kepada akun operator dan grup `www` agar console dapat membuat profile/log serta PHP-FPM tetap dapat membaca source. Source berada pada subfolder `sita`, sedangkan folder parent tetap menjadi root Website bawaan aaPanel. File panel seperti `.user.ini`, `.htaccess`, serta halaman error tetap berada pada folder parent dan tidak disentuh Git. Pada atomic release pertama, console mengenali root parent tersebut, mencadangkan vhost, menguji konfigurasi Nginx, lalu mengarahkannya ke `current/public` secara terkontrol.
+aaPanel umumnya membuat folder Website dengan pemilik `www`, sehingga `git clone` langsung oleh akun SSH non-root dapat ditolak. Perintah di atas memakai hak administrator hanya untuk membuat checkout, lalu memberikan kepemilikan kepada akun operator dan grup `www` agar console dapat membuat profile/log serta PHP-FPM tetap dapat membaca source. Permission file bawaan Git dipertahankan agar control checkout tidak tampak berubah hanya karena mode executable skrip. Source berada pada subfolder `sita`, sedangkan folder parent tetap menjadi root Website bawaan aaPanel. File panel seperti `.user.ini`, `.htaccess`, serta halaman error tetap berada pada folder parent dan tidak disentuh Git. Pada atomic release pertama, console mengenali root parent tersebut, mencadangkan vhost, menguji konfigurasi Nginx, lalu mengarahkannya ke `current/public` secara terkontrol.
 
 Bila administrator memilih nama atau lokasi source lain, clone ke lokasi tersebut. Saat menu inisialisasi meminta **Folder root Website aaPanel**, masukkan folder parent yang benar. Contoh: source `/www/wwwroot/webkampus/sita` memiliki root Website `/www/wwwroot/webkampus`.
 
