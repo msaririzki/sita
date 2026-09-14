@@ -34,6 +34,14 @@ it('does not create another initial account when an account already exists', fun
     expect(User::query()->count())->toBe(1);
 });
 
+it('skips initial provisioning non-interactively when an account already exists', function () {
+    User::factory()->create();
+
+    $this->artisan('sita:provision-initial-super-admin --no-interaction')
+        ->expectsOutput('Akun SiTA sudah tersedia; pembuatan Super Admin awal dilewati.')
+        ->assertExitCode(0);
+});
+
 it('refuses non-interactive provisioning on an empty database', function () {
     $this->artisan('sita:provision-initial-super-admin --no-interaction')
         ->expectsOutput('Database belum memiliki akun. Jalankan dari terminal interaktif untuk membuat Super Admin awal.')

@@ -146,6 +146,28 @@ run_privileged() {
     fi
 }
 
+ensure_privileged_access() {
+    if [ "$EUID" -eq 0 ]; then
+        return
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        printf 'Akses root diperlukan. Jalankan console sebagai root atau pasang sudo untuk akun deploy.\n' >&2
+        return 1
+    fi
+
+    if [ -t 0 ]; then
+        if sudo -v; then
+            return
+        fi
+    elif sudo -n true >/dev/null 2>&1; then
+        return
+    fi
+
+    printf 'Akses sudo belum siap untuk akun %s. Jalankan sebagai root, atau berikan hak sudo sebelum menjalankan deployment.\n' "$(id -un)" >&2
+    return 1
+}
+
 run_as_php_runtime_user() {
     if [ "$(id -un)" = "$PHP_FPM_RUNTIME_USER" ]; then
         "$@"
@@ -247,8 +269,13 @@ provision_initial_super_admin() {
 
     app_dir="$(active_app_dir)"
     if [ ! -t 0 ]; then
-        printf 'Bootstrap server baru memerlukan terminal interaktif untuk membuat akun Super Admin pertama.\n' >&2
-        return 1
+        # The Artisan command safely skips provisioning when a restored or
+        # previously bootstrapped database already has a user. On an empty
+        # database it rejects --no-interaction and tells the operator to use
+        # an interactive terminal, which keeps first-account credentials out
+        # of automation arguments and logs.
+        run_as_php_runtime_user "$PHP_BIN" "$app_dir/artisan" sita:provision-initial-super-admin --no-interaction
+        return
     fi
 
     run_as_php_runtime_user "$PHP_BIN" "$app_dir/artisan" sita:provision-initial-super-admin
@@ -279,6 +306,32 @@ prepare_php_extensions() {
         bash "$PROJECT_ROOT/deploy/aapanel-php-extensions.sh"
 }
 
+prepare_runtime_directories() {
+    local directory
+
+    if ! getent group "$PHP_FPM_RUNTIME_GROUP" >/dev/null 2>&1; then
+        printf 'Group runtime PHP-FPM tidak ditemukan: %s\n' "$PHP_FPM_RUNTIME_GROUP" >&2
+        return 1
+    fi
+
+    for directory in \
+        "$PROJECT_ROOT/storage/app/public" \
+        "$PROJECT_ROOT/storage/app/private" \
+        "$PROJECT_ROOT/storage/framework/cache/data" \
+        "$PROJECT_ROOT/storage/framework/sessions" \
+        "$PROJECT_ROOT/storage/framework/views" \
+        "$PROJECT_ROOT/storage/logs" \
+        "$PROJECT_ROOT/bootstrap/cache"; do
+        run_privileged install -d -m 2770 -g "$PHP_FPM_RUNTIME_GROUP" "$directory"
+    done
+
+    run_privileged chgrp -R "$PHP_FPM_RUNTIME_GROUP" "$PROJECT_ROOT/storage" "$PROJECT_ROOT/bootstrap/cache"
+    run_privileged chmod -R ug+rwX "$PROJECT_ROOT/storage" "$PROJECT_ROOT/bootstrap/cache"
+    run_privileged chgrp "$PHP_FPM_RUNTIME_GROUP" "$PROJECT_ROOT/.env"
+    run_privileged chmod 640 "$PROJECT_ROOT/.env"
+    printf 'Direktori runtime SITA siap ditulis oleh user PHP-FPM %s.\n' "$PHP_FPM_RUNTIME_USER"
+}
+
 prepare_nginx_integration() {
     DOMAIN="$DOMAIN" \
         NGINX_CONFIG="$NGINX_CONFIG" \
@@ -287,6 +340,7 @@ prepare_nginx_integration() {
 }
 
 banner
+ensure_privileged_access
 if [ "$ACTION" = 'release' ] && [ "$DEPLOYMENT_STRATEGY" = 'atomic' ]; then
     phase '1/4' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
     phase '2/4' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
@@ -299,24 +353,25 @@ fi
 
 if [ "$ACTION" = 'bootstrap' ] || [ "$ACTION" = 'release' ]; then
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '1/8' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
-        phase '2/8' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
-        phase '3/8' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
-        phase '4/8' 'Precheck runtime dan aplikasi' doctor_environment
+        phase '1/9' 'Siapkan extension PHP yang diperlukan' prepare_php_extensions
+        phase '2/9' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
+        phase '3/9' 'Siapkan direktori runtime SITA' prepare_runtime_directories
+        phase '4/9' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
+        phase '5/9' 'Precheck runtime dan aplikasi' doctor_environment
     else
         phase '1/6' 'Pasang integrasi Laravel dan Reverb pada vhost aaPanel' prepare_nginx_integration
         phase '2/6' 'Sinkronisasi GUI aaPanel dan runtime' sync_environment
         phase '3/6' 'Precheck runtime dan aplikasi' doctor_environment
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '5/8' 'Deployment awal dan pemasangan service runtime' deploy_application
-        phase '6/8' 'Buat akun Super Admin pertama bila database masih kosong' provision_initial_super_admin
+        phase '6/9' 'Deployment awal dan pemasangan service runtime' deploy_application
+        phase '7/9' 'Buat akun Super Admin pertama bila database masih kosong' provision_initial_super_admin
     else
         phase '4/6' 'Deployment aplikasi' deploy_application
     fi
     if [ "$ACTION" = 'bootstrap' ]; then
-        phase '7/8' 'Validasi sinkronisasi pascadeploy' sync_environment
-        phase '8/8' 'Security gate pascadeploy' security_gate
+        phase '8/9' 'Validasi sinkronisasi pascadeploy' sync_environment
+        phase '9/9' 'Security gate pascadeploy' security_gate
     else
         phase '5/6' 'Validasi sinkronisasi pascadeploy' sync_environment
         phase '6/6' 'Security gate pascadeploy' security_gate

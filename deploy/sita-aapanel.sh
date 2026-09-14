@@ -73,6 +73,28 @@ node_runtime_missing() {
     ! command_available "$node_bin" || ! command_available "$npm_bin"
 }
 
+php_fileinfo_missing() {
+    local php_bin
+
+    php_bin="$(profile_value PHP_BIN)"
+    php_bin="${php_bin:-/www/server/php/84/bin/php}"
+    [ -x "$php_bin" ] || return 1
+    ! "$php_bin" -m 2>/dev/null | grep -qx fileinfo
+}
+
+repair_php_fileinfo() {
+    local domain php_bin php_fpm_service
+
+    domain="$(profile_value DOMAIN)"
+    php_bin="$(profile_value PHP_BIN)"
+    php_fpm_service="$(profile_value PHP_FPM_SERVICE)"
+
+    DOMAIN="$domain" \
+        PHP_BIN="${php_bin:-/www/server/php/84/bin/php}" \
+        PHP_FPM_SERVICE="${php_fpm_service:-php-fpm-84}" \
+        bash "$PROJECT_ROOT/deploy/aapanel-php-extensions.sh"
+}
+
 release_menu_copy() {
     if [ "$(deployment_strategy)" = 'atomic' ]; then
         printf '%s' 'Atomic Release + rollback kode'
@@ -334,6 +356,27 @@ run_check_with_remediation() {
         return
     fi
 
+    if php_fileinfo_missing; then
+        printf '\n%bExtension fileinfo PHP belum aktif. Perbaiki runtime PHP SITA sekarang?%b\n' "$yellow" "$reset"
+        printf 'Skrip akan membuat backup PHP, hanya berjalan otomatis bila runtime PHP dipakai satu website, lalu memverifikasinya kembali.\n'
+        read -r -p 'Lanjutkan perbaikan otomatis? [y/N]: ' answer
+        case "$answer" in
+            y|Y|yes|YES)
+                if repair_php_fileinfo; then
+                    printf '\nMengulang Check setelah perbaikan PHP...\n'
+                    if run_action check; then
+                        show_action_result check
+                        return
+                    fi
+                else
+                    show_action_failure check
+                    return
+                fi
+                ;;
+            *) show_action_failure check; return ;;
+        esac
+    fi
+
     if node_runtime_missing; then
         printf '\n%bNode.js/npm belum tersedia. Instal runtime Node 22 khusus SITA sekarang?%b\n' "$yellow" "$reset"
         printf 'Runtime akan dipasang di /opt/sita/node, checksum resmi diverifikasi, dan Node aaPanel global tidak diubah.\n'
@@ -527,10 +570,12 @@ show_tutorial() {
     printf '      serta Reverb secara acak. Password database tidak ditampilkan.\n\n'
     printf '  [2] Check kesiapan server\n'
     printf '      Memeriksa sinkronisasi GUI aaPanel, PHP, extension, Nginx, .env,\n'
-    printf '      permission runtime, dan service tanpa mengubah aplikasi.\n\n'
+    printf '      permission runtime, dan service tanpa mengubah aplikasi. Bila fileinfo\n'
+    printf '      atau Node belum tersedia, konsol dapat menawarkan perbaikan terisolasi.\n\n'
     printf '  [3] Siapkan server baru (deploy awal)\n'
-    printf '      Dipakai sekali untuk deploy awal setelah Check lulus. Menjalankan\n'
-    printf '      deploy awal dan memasang service Reverb, queue, serta scheduler.\n\n'
+    printf '      Dipakai sekali setelah hasil Check ditinjau. Pada checkout baru, ia\n'
+    printf '      menyiapkan permission runtime lalu deploy awal serta service Reverb,\n'
+    printf '      queue, dan scheduler.\n\n'
     printf '  [4] %s\n' "$(release_menu_copy)"
     printf '      Dipakai setiap ada pembaruan kode. Menjalankan pemeriksaan awal,\n'
     if [ "$(deployment_strategy)" = 'atomic' ]; then
@@ -585,7 +630,7 @@ while true; do
     title
     printf '\n'
     printf '  %b[1]%b  Inisialisasi aplikasi    %b.env + profile + key aman, sekali per server%b\n' "$cyan" "$reset" "$dim" "$reset"
-    printf '  %b[2]%b  Check kesiapan server     %bPemeriksaan + opsi perbaikan Node%b\n' "$cyan" "$reset" "$dim" "$reset"
+    printf '  %b[2]%b  Check kesiapan server     %bPemeriksaan + opsi perbaikan PHP/Node%b\n' "$cyan" "$reset" "$dim" "$reset"
     printf '  %b[3]%b  Siapkan server baru      %bDeploy awal dan aktifkan service%b\n' "$cyan" "$reset" "$dim" "$reset"
     if [ "$(deployment_strategy)" = 'atomic' ]; then
         printf '  %b[4]%b  Atomic Release            %bCandidate + gate + rollback kode%b\n' "$cyan" "$reset" "$dim" "$reset"

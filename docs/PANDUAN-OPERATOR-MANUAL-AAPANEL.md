@@ -99,12 +99,16 @@ Setelah komponen GUI tersedia, operator cukup clone source yang telah disetujui 
 
 ```bash
 cd /www/wwwroot/sita-aapanel.ikydev.com
-git clone -b codex/dependency-audit-p1 --depth=1 https://github.com/msaririzki/sita.git sita
+sudo git clone -b codex/dependency-audit-p1 --depth=1 https://github.com/msaririzki/sita.git sita
+sudo chown -R "$(id -un)":www sita
+sudo find sita -type d -exec chmod 750 {} +
+sudo find sita -type f -exec chmod 640 {} +
+sudo find sita/deploy -type f -name '*.sh' -exec chmod 750 {} +
 cd sita
 bash deploy/sita.sh
 ```
 
-Source berada pada subfolder `sita`, sedangkan folder parent tetap menjadi root Website bawaan aaPanel. File panel seperti `.user.ini`, `.htaccess`, serta halaman error tetap berada pada folder parent dan tidak disentuh Git. Pada atomic release pertama, console mengenali root parent tersebut, mencadangkan vhost, menguji konfigurasi Nginx, lalu mengarahkannya ke `current/public` secara terkontrol.
+aaPanel umumnya membuat folder Website dengan pemilik `www`, sehingga `git clone` langsung oleh akun SSH non-root dapat ditolak. Perintah di atas memakai hak administrator hanya untuk membuat checkout, lalu memberikan kepemilikan kepada akun operator dan grup `www` agar console dapat membuat profile/log serta PHP-FPM tetap dapat membaca source. Source berada pada subfolder `sita`, sedangkan folder parent tetap menjadi root Website bawaan aaPanel. File panel seperti `.user.ini`, `.htaccess`, serta halaman error tetap berada pada folder parent dan tidak disentuh Git. Pada atomic release pertama, console mengenali root parent tersebut, mencadangkan vhost, menguji konfigurasi Nginx, lalu mengarahkannya ke `current/public` secara terkontrol.
 
 Bila administrator memilih nama atau lokasi source lain, clone ke lokasi tersebut. Saat menu inisialisasi meminta **Folder root Website aaPanel**, masukkan folder parent yang benar. Contoh: source `/www/wwwroot/webkampus/sita` memiliki root Website `/www/wwwroot/webkampus`.
 
@@ -123,7 +127,7 @@ Profile adalah kartu konfigurasi operasional server yang dipakai console pada se
 
 Untuk email, menu membuat `MAIL_MAILER=log` sebagai nilai aman pada lab. Sebelum fitur email diuji, isi `MAIL_*` dengan layanan SMTP yang disetujui di `.env` lokal.
 
-Setelah menu [1], urutan normal adalah [3] Check kesiapan server, kemudian [2] Siapkan server baru. Update selanjutnya hanya memakai [4] Atomic Release.
+Setelah menu [1], urutan normal adalah [2] Check kesiapan server, kemudian [3] Siapkan server baru. Update selanjutnya hanya memakai [4] Atomic Release.
 ## 6. Pasang Cloudflare Tunnel
 
 Di Cloudflare Zero Trust:
@@ -141,13 +145,13 @@ Tunnel sehat hanya membuktikan connector terhubung ke Cloudflare. Ia tidak membu
 Sebelum deploy, cek tanpa perubahan:
 
 ```bash
-cd /www/wwwroot/sita-aapanel.ikydev.com
+cd /www/wwwroot/sita-aapanel.ikydev.com/sita
 bash deploy/sita.sh aapanel check
 ```
 
-Perbaiki setiap `[FAIL]`. Pada VM lab saat prosedur ini ditulis, Node.js belum tersedia. Extension `fileinfo` belum aktif, tetapi akan diperbaiki otomatis saat Bootstrap setelah Node.js siap.
+Check tidak menulis aplikasi. Pada server benar-benar baru, `[FAIL]` permission `storage` dan `bootstrap/cache` masih wajar sebelum Bootstrap karena source baru belum menyiapkan direktori runtime. Tinjau hasilnya untuk memastikan domain, vhost, PHP, dan `.env` benar. Menu Check dapat menawarkan perbaikan terisolasi untuk `fileinfo` dan Node.js; Bootstrap juga memastikan ulang keduanya serta menyiapkan permission runtime sebelum deploy.
 
-Jika Check siap, jalankan deploy awal:
+Setelah hasil Check ditinjau, jalankan deploy awal:
 
 ```bash
 bash deploy/sita.sh aapanel bootstrap
@@ -182,7 +186,7 @@ Di aaPanel, pantau access log, error log, penggunaan CPU/RAM, status database, d
 Untuk update kode yang sudah ada di branch aktif:
 
 ```bash
-cd /www/wwwroot/sita-aapanel.ikydev.com
+cd /www/wwwroot/sita-aapanel.ikydev.com/sita
 bash deploy/sita.sh aapanel release
 ```
 
