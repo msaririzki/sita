@@ -128,6 +128,8 @@ Untuk email, menu membuat `MAIL_MAILER=log` sebagai nilai aman pada lab. Sebelum
 Setelah menu [1], urutan normal adalah [2] Check kesiapan server, kemudian [3] Siapkan server baru. Update selanjutnya hanya memakai [4] Atomic Release.
 ## 6. Pasang Cloudflare Tunnel
 
+Bagian ini hanya untuk lab yang tidak memiliki IP publik. Jangan memasang Tunnel pada VPS atau server kampus yang memakai pola **Cloudflare proxy langsung -> origin aaPanel HTTPS**.
+
 Di Cloudflare Zero Trust:
 
 1. Buka **Networks > Tunnels** dan buat atau pilih Tunnel khusus `sita-lab-aapanel`.
@@ -137,6 +139,17 @@ Di Cloudflare Zero Trust:
 5. Pastikan service connector aktif dan domain dapat mencapai Nginx setelah bootstrap.
 
 Tunnel sehat hanya membuktikan connector terhubung ke Cloudflare. Ia tidak membuktikan Nginx, PHP, database, Reverb, atau SITA siap. Itu tugas Deployment Console dan gate.
+
+### 6.1 Alternatif: Cloudflare proxy langsung untuk server ber-IP publik
+
+Untuk meniru pola server kampus yang menerima HTTPS langsung pada Nginx aaPanel:
+
+1. Buat record `A` untuk domain Website menuju IP publik origin dan aktifkan proxy Cloudflare.
+2. Pasang sertifikat origin pada vhost aaPanel, aktifkan listener TLS port `443`, lalu uji `nginx -t` sebelum reload. Sertifikat Cloudflare Origin hanya dipercaya oleh Cloudflare; akses langsung ke IP origin memang tidak boleh dipakai sebagai uji browser.
+3. Gunakan `HTTP_PROBE_MODE=origin-https`, `CHECK_EDGE_HTTP=true`, dan `EDGE_ACCESS_POLICY=required` pada profile. Console lalu menolak release bila origin HTTPS atau jalur Cloudflare publik tidak sehat.
+4. Bila kebijakan server mengizinkan, batasi firewall port `80` dan `443` hanya untuk rentang IP resmi Cloudflare. Simpan backup aturan firewall dan jangan membatasi SSH atau port panel dalam langkah ini.
+
+Mode SSL Cloudflare adalah pengaturan tingkat zona. Jangan mengubahnya hanya untuk SITA tanpa menilai dampaknya pada subdomain lain. Pada lab ini mode zona yang telah ada adalah `Full`; perubahan ke `Full (strict)` baru layak setelah seluruh origin lain di zona memiliki sertifikat yang valid.
 
 ## 7. Deploy awal
 
