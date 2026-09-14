@@ -95,25 +95,43 @@ profile_set_value() {
     chmod 600 "$PROFILE_FILE"
 }
 
-environment_value() {
-    local key="$1"
+environment_value_at() {
+    local environment_file="$1" key="$2"
 
-    [ -f "$APP_DIR/.env" ] || return
-    grep -E "^${key}=" "$APP_DIR/.env" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
+    [ -f "$environment_file" ] || return
+    grep -E "^${key}=" "$environment_file" | tail -n 1 | cut -d '=' -f 2- | sed -e 's/^"//' -e 's/"$//'
 }
 
-environment_set_value() {
-    local key="$1" value="$2" temporary_file
+environment_value() {
+    environment_value_at "$APP_DIR/.env" "$1"
+}
 
-    [ -f "$APP_DIR/.env" ] || return 0
-    temporary_file="$(mktemp "${APP_DIR}/.env.tmp.XXXXXX")"
+environment_set_value_at() {
+    local environment_file="$1" key="$2" value="$3" temporary_file
+
+    [ -f "$environment_file" ] || return 0
+    temporary_file="$(mktemp "$(dirname "$environment_file")/.env.tmp.XXXXXX")"
     awk -v key="$key" -v value="$value" '
         index($0, key "=") == 1 { print key "=\"" value "\""; seen=1; next }
         { print }
         END { if (!seen) print key "=\"" value "\"" }
-    ' "$APP_DIR/.env" > "$temporary_file"
-    mv "$temporary_file" "$APP_DIR/.env"
-    chmod 640 "$APP_DIR/.env"
+    ' "$environment_file" > "$temporary_file"
+    mv "$temporary_file" "$environment_file"
+    chmod 640 "$environment_file"
+    if ! chgrp "$PHP_FPM_RUNTIME_GROUP" "$environment_file" 2>/dev/null; then
+        run_privileged chgrp "$PHP_FPM_RUNTIME_GROUP" "$environment_file"
+    fi
+}
+
+environment_set_value() {
+    local key="$1" value="$2" shared_environment
+
+    environment_set_value_at "$APP_DIR/.env" "$key" "$value"
+    shared_environment="${RELEASE_ROOT}/shared/.env"
+    if [ "$DEPLOYMENT_STRATEGY" = 'atomic' ] && [ -f "$shared_environment" ] \
+        && [ "$(readlink -f "$shared_environment")" != "$(readlink -f "$APP_DIR/.env")" ]; then
+        environment_set_value_at "$shared_environment" "$key" "$value"
+    fi
 }
 
 port_is_listening() {
@@ -153,12 +171,22 @@ find_available_reverb_port() {
 }
 
 ensure_reverb_port_configuration() {
-    local existing_port selected_port
+    local existing_port selected_port shared_environment
 
     if [ -n "$REVERB_INTERNAL_PORT" ]; then
         if [[ ! "$REVERB_INTERNAL_PORT" =~ ^[0-9]+$ ]] || [ "$REVERB_INTERNAL_PORT" -lt 1024 ] || [ "$REVERB_INTERNAL_PORT" -gt 65535 ]; then
             printf 'REVERB_INTERNAL_PORT pada profile harus berupa port nonprivileged 1024-65535.\n' >&2
             return 1
+        fi
+        shared_environment="${RELEASE_ROOT}/shared/.env"
+        if [ "$(environment_value REVERB_INTERNAL_PORT)" != "$REVERB_INTERNAL_PORT" ] \
+            || [ "$(environment_value REVERB_SERVER_PORT)" != "$REVERB_INTERNAL_PORT" ] \
+            || { [ "$DEPLOYMENT_STRATEGY" = 'atomic' ] && [ -f "$shared_environment" ] \
+                && { [ "$(environment_value_at "$shared_environment" REVERB_INTERNAL_PORT)" != "$REVERB_INTERNAL_PORT" ] \
+                    || [ "$(environment_value_at "$shared_environment" REVERB_SERVER_PORT)" != "$REVERB_INTERNAL_PORT" ]; }; }; then
+            environment_set_value REVERB_INTERNAL_PORT "$REVERB_INTERNAL_PORT"
+            environment_set_value REVERB_SERVER_PORT "$REVERB_INTERNAL_PORT"
+            printf '[OK] .env Reverb diselaraskan dengan profile: %s\n' "$REVERB_INTERNAL_PORT"
         fi
         return 0
     fi
