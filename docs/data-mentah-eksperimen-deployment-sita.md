@@ -1,0 +1,18 @@
+# Data Mentah Eksperimen Deployment SITA
+
+Berkas ini menyimpan hasil per pengulangan eksperimen. Semua waktu memakai UTC. Nilai `tidak_relevan` dipakai bila sebuah metrik tidak berlaku untuk skenario tersebut. Rahasia, password, token, dan isi `.env` tidak dicatat.
+
+| ID | Skenario | Environment | Metode | Ulang | Kondisi | Keputusan | Waktu deteksi | Waktu pemulihan | Langkah manual | Rollback | Commit/release | Bukti log | Catatan |
+|---|---|---|---|---:|---|---|---:|---:|---:|---|---|---|---|
+| G-00-DKR-T1-01 | G-00 normal | Docker | T1 Console | 1 | Normal | siap | 10.687 ms | tidak_relevan | 1 | tidak_relevan | `eb7e4bc` / Compose | `/home/ServerDeploy/apps/sita/storage/logs/deployment/docker-check-20260914T151537Z.log` | Integration dan Security Gate lulus. |
+| G-00-DKR-T1-02 | G-00 normal | Docker | T1 Console | 2 | Normal | siap | 11.284 ms | tidak_relevan | 1 | tidak_relevan | `eb7e4bc` / Compose | `/home/ServerDeploy/apps/sita/storage/logs/deployment/docker-check-20260914T151548Z.log` | Integration dan Security Gate lulus. |
+| G-00-DKR-T1-03 | G-00 normal | Docker | T1 Console | 3 | Normal | siap | 11.129 ms | tidak_relevan | 1 | tidak_relevan | `eb7e4bc` / Compose | `/home/ServerDeploy/apps/sita/storage/logs/deployment/docker-check-20260914T151559Z.log` | Integration dan Security Gate lulus. |
+| G-00-DKR-T1-04 | G-00 normal | Docker | T1 Console | 4 | Normal | siap | 14.430 ms | tidak_relevan | 1 | tidak_relevan | `eb7e4bc` / Compose | `/home/ServerDeploy/apps/sita/storage/logs/deployment/docker-check-20260914T151610Z.log` | Integration dan Security Gate lulus. |
+| G-00-DKR-T1-05 | G-00 normal | Docker | T1 Console | 5 | Normal | siap | 15.810 ms | tidak_relevan | 1 | tidak_relevan | `eb7e4bc` / Compose | `/home/ServerDeploy/apps/sita/storage/logs/deployment/docker-check-20260914T151624Z.log` | Integration dan Security Gate lulus. |
+| G-00-AAP-T1-01 | G-00 normal | aaPanel | T1 Console | 1 | Normal | siap | 3.073 ms | tidak_relevan | 1 | tidak_relevan | `e1f03aa` / `20260914T131002Z-e1f03aaf7f7c` | `/www/wwwroot/sita-retest.ikydev.com/sita/storage/logs/deployment/aapanel-check-20260914T151536Z.log` | Sinkronisasi dan precheck lulus; peringatan PHP runtime bersama tidak menolak release. |
+| G-00-AAP-T1-02 | G-00 normal | aaPanel | T1 Console | 2 | Normal | siap | 2.042 ms | tidak_relevan | 1 | tidak_relevan | `e1f03aa` / `20260914T131002Z-e1f03aaf7f7c` | `/www/wwwroot/sita-retest.ikydev.com/sita/storage/logs/deployment/aapanel-check-20260914T151539Z.log` | Sinkronisasi dan precheck lulus. |
+| G-00-AAP-T1-03 | G-00 normal | aaPanel | T1 Console | 3 | Normal | siap | 2.053 ms | tidak_relevan | 1 | tidak_relevan | `e1f03aa` / `20260914T131002Z-e1f03aaf7f7c` | `/www/wwwroot/sita-retest.ikydev.com/sita/storage/logs/deployment/aapanel-check-20260914T151541Z.log` | Sinkronisasi dan precheck lulus. |
+| G-00-AAP-T1-04 | G-00 normal | aaPanel | T1 Console | 4 | Normal | siap | 2.080 ms | tidak_relevan | 1 | tidak_relevan | `e1f03aa` / `20260914T131002Z-e1f03aaf7f7c` | `/www/wwwroot/sita-retest.ikydev.com/sita/storage/logs/deployment/aapanel-check-20260914T151543Z.log` | Sinkronisasi dan precheck lulus. |
+| G-00-AAP-T1-05 | G-00 normal | aaPanel | T1 Console | 5 | Normal | siap | 2.269 ms | tidak_relevan | 1 | tidak_relevan | `e1f03aa` / `20260914T131002Z-e1f03aaf7f7c` | `/www/wwwroot/sita-retest.ikydev.com/sita/storage/logs/deployment/aapanel-check-20260914T151545Z.log` | Sinkronisasi dan precheck lulus. |
+
+Catatan G-00/T1: false positive Console adalah `0/5` pada Docker dan `0/5` pada aaPanel. Rata-rata waktu pemeriksaan Docker adalah `12.668 ms`, sedangkan aaPanel `2.303 ms`. Nilai ini mengukur waktu eksekusi Console dari awal hingga keputusan, bukan waktu persepsi pengguna di browser.
