@@ -15,6 +15,7 @@ HTTP_PROBE_MODE="${HTTP_PROBE_MODE:-auto}"
 ORIGIN_PROBE_ADDRESS="${ORIGIN_PROBE_ADDRESS:-127.0.0.1}"
 ORIGIN_PROBE_HTTP_PORT="${ORIGIN_PROBE_HTTP_PORT:-80}"
 EDGE_ACCESS_POLICY="${EDGE_ACCESS_POLICY:-warn}"
+CHECK_EDGE_HTTP="${CHECK_EDGE_HTTP:-false}"
 CHECK_SERVICES="${CHECK_SERVICES:-true}"
 CHECK_WEBSOCKET="${CHECK_WEBSOCKET:-true}"
 SERVICE_READY_ATTEMPTS="${SERVICE_READY_ATTEMPTS:-10}"
@@ -206,13 +207,14 @@ configure_http_probe() {
 check_public_edge() {
     local status
 
+    [ "$CHECK_EDGE_HTTP" = 'true' ] || return
     [ "$HTTP_PROBE_EFFECTIVE_MODE" != 'public' ] || return
     case "$EDGE_ACCESS_POLICY" in
         off) return ;;
         warn|required) ;;
         *) fail "EDGE_ACCESS_POLICY harus off, warn, atau required"; return ;;
     esac
-    status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
+    status="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 "${PUBLIC_BASE_URL%/}/up" 2>/dev/null || true)"
     if [ "$status" = '200' ]; then
         ok "Healthcheck jalur publik tersedia"
     elif [ "$EDGE_ACCESS_POLICY" = 'required' ]; then

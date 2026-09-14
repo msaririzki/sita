@@ -359,6 +359,7 @@ integration_gate() {
         ORIGIN_PROBE_ADDRESS="$ORIGIN_PROBE_ADDRESS" \
         ORIGIN_PROBE_HTTP_PORT="$ORIGIN_PROBE_HTTP_PORT" \
         EDGE_ACCESS_POLICY="$EDGE_ACCESS_POLICY" \
+        CHECK_EDGE_HTTP="$CHECK_EDGE_HTTP" \
         CHECK_SERVICES=true \
         CHECK_WEBSOCKET=true \
         bash deploy/aapanel-integration-gate.sh
