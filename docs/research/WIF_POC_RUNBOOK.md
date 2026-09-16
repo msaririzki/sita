@@ -96,12 +96,17 @@ Create a Tailscale federated identity with:
 | -------- | --------------------------------------------------------------------------- |
 | Provider | GitHub Actions                                                              |
 | Issuer   | `https://token.actions.githubusercontent.com`                               |
-| Subject  | Repository-scoped subject for `msaririzki/sita` with the POC branch allowed |
+| Subject  | `repo:msaririzki@108948357/sita@1363462850:ref:refs/heads/codex/wif-poc`       |
 | Scope    | `auth_keys` write only                                                      |
 | Tag      | `tag:ci-wif-basic`                                                          |
 
 The basic profile should accept the POC branch. The final multi-claim profile
 will later restrict repository ID, owner ID, branch, and workflow.
+
+The GitHub issuer returned the ID-bound subject above. The initial human-readable
+pattern `repo:msaririzki/sita:*` was rejected with HTTP 403, which confirms that
+the trust credential compares the received subject and does not infer repository
+identity from its display name.
 
 ## GitHub Repository Variables
 
@@ -146,3 +151,26 @@ evidence still records the selected path and latency for later analysis.
 | Ping            | Network policy or target reachability failed                   |
 | Tailscale SSH   | Target tag, SSH enablement, SSH policy, or user mapping failed |
 | Artifact upload | Evidence pipeline failed independently of authentication       |
+
+## Validated Proof
+
+GitHub Actions run
+[`35099221776`](https://github.com/msaririzki/sita/actions/runs/35099221776)
+completed successfully on commit `0c3675710d9aaec70376770aaa13e2272b150602`.
+
+| Observation          | Verified result                                      |
+| -------------------- | ---------------------------------------------------- |
+| OIDC-WIF exchange    | Passed on the first exchange attempt                  |
+| Ephemeral source tag | `tag:ci-wif-basic`                                    |
+| Target               | `sita-docker.nyala-betta.ts.net` / `tag:sita-target` |
+| Network path         | DERP Singapore                                        |
+| Ping samples         | 662 ms, 244 ms, 244 ms                                |
+| Tailscale SSH        | Passed in 2589.033 ms                                 |
+| Remote identity      | `ServerDeploy@sita-docker`                            |
+| Docker response      | Server version `29.8.0`                               |
+| Evidence integrity   | Zero SHA-256 manifest mismatches                      |
+| Ephemeral cleanup    | Runner absent; machine count returned to 28           |
+
+This proof reads only the hostname, operating-system user, and Docker server
+version. It does not deploy SITA, write application data, or require an OAuth
+client secret or SSH private key.
