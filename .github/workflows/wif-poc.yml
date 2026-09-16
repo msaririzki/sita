@@ -1,0 +1,246 @@
+name: WIF connectivity proof
+
+on:
+  push:
+    branches:
+      - codex/wif-poc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wif-poc-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prove-wif-connectivity:
+    name: Prove WIF and Tailscale SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EVIDENCE_DIR: evidence
+      TARGET_HOST: ${{ vars.SITA_TARGET_TS_HOST }}
+      TARGET_USER: ${{ vars.SITA_TARGET_USER || 'ServerDeploy' }}
+
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Initialize evidence and validate configuration
+        id: preflight
+        env:
+          TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
+          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          required = {
+              "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
+              "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
+              "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
+              "TARGET_USER": os.environ.get("TARGET_USER", ""),
+          }
+          missing = [name for name, value in required.items() if not value.strip()]
+
+          metadata = {
+              "schema_version": "poc-1",
+              "configuration": "wif_basic",
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "repository_id": os.environ.get("GITHUB_REPOSITORY_ID"),
+              "repository_owner_id": os.environ.get("GITHUB_REPOSITORY_OWNER_ID"),
+              "ref": os.environ["GITHUB_REF"],
+              "sha": os.environ["GITHUB_SHA"],
+              "workflow": os.environ["GITHUB_WORKFLOW"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "actor_id": os.environ.get("GITHUB_ACTOR_ID"),
+              "event_name": os.environ["GITHUB_EVENT_NAME"],
+              "runner_os": os.environ["RUNNER_OS"],
+              "runner_arch": os.environ["RUNNER_ARCH"],
+              "target_host": required["TARGET_HOST"],
+              "target_user": required["TARGET_USER"],
+              "missing_configuration": missing,
+          }
+          Path(os.environ["EVIDENCE_DIR"], "run-metadata.json").write_text(
+              json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          if missing:
+              raise SystemExit("Missing GitHub repository variables: " + ", ".join(missing))
+          PY
+
+      - name: Join tailnet using GitHub OIDC and Tailscale WIF
+        id: wif
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
+          audience: ${{ vars.TS_WIF_AUDIENCE }}
+          tags: tag:ci-wif-basic
+
+      - name: Capture sanitized Tailscale state
+        id: tailscale-state
+        run: |
+          set -euo pipefail
+          tailscale version > "${EVIDENCE_DIR}/tailscale-version.txt"
+          tailscale status --json | python3 -c '
+          import json
+          import sys
+
+          source = json.load(sys.stdin)
+          own = source.get("Self", {})
+          sanitized = {
+              "backend_state": source.get("BackendState"),
+              "current_tailnet": source.get("CurrentTailnet", {}).get("Name"),
+              "self": {
+                  "id": own.get("ID"),
+                  "host_name": own.get("HostName"),
+                  "dns_name": own.get("DNSName"),
+                  "tailscale_ips": own.get("TailscaleIPs"),
+                  "tags": own.get("Tags"),
+                  "online": own.get("Online"),
+              },
+          }
+          json.dump(sanitized, sys.stdout, indent=2, sort_keys=True)
+          print()
+          ' > "${EVIDENCE_DIR}/tailscale-status.json"
+
+      - name: Probe target through Tailscale
+        id: ping
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          tailscale ping -c 3 "${TARGET_HOST}" > "${EVIDENCE_DIR}/tailscale-ping.txt" 2>&1
+          probe_exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+
+          STARTED_NS="${started_ns}" FINISHED_NS="${finished_ns}" EXIT_CODE="${probe_exit_code}" \
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          started = int(os.environ["STARTED_NS"])
+          finished = int(os.environ["FINISHED_NS"])
+          result = {
+              "target": os.environ["TARGET_HOST"],
+              "exit_code": int(os.environ["EXIT_CODE"]),
+              "duration_ms": round((finished - started) / 1_000_000, 3),
+              "status": "pass" if os.environ["EXIT_CODE"] == "0" else "fail",
+          }
+          Path(os.environ["EVIDENCE_DIR"], "tailscale-ping.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          exit "${probe_exit_code}"
+
+      - name: Prove identity-bound Tailscale SSH
+        id: ssh
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          timeout 30s tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
+            'printf "HOST="; hostname; printf "USER="; id -un; printf "DOCKER="; docker version --format "{{.Server.Version}}"' \
+            > "${EVIDENCE_DIR}/tailscale-ssh.txt" 2>&1
+          ssh_exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+
+          STARTED_NS="${started_ns}" FINISHED_NS="${finished_ns}" EXIT_CODE="${ssh_exit_code}" \
+            python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          started = int(os.environ["STARTED_NS"])
+          finished = int(os.environ["FINISHED_NS"])
+          result = {
+              "target": os.environ["TARGET_HOST"],
+              "target_user": os.environ["TARGET_USER"],
+              "exit_code": int(os.environ["EXIT_CODE"]),
+              "duration_ms": round((finished - started) / 1_000_000, 3),
+              "status": "pass" if os.environ["EXIT_CODE"] == "0" else "fail",
+          }
+          Path(os.environ["EVIDENCE_DIR"], "tailscale-ssh.json").write_text(
+              json.dumps(result, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          exit "${ssh_exit_code}"
+
+      - name: Finalize proof evidence
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          WIF_OUTCOME: ${{ steps.wif.outcome }}
+          TAILSCALE_STATE_OUTCOME: ${{ steps.tailscale-state.outcome }}
+          PING_OUTCOME: ${{ steps.ping.outcome }}
+          SSH_OUTCOME: ${{ steps.ssh.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/finished-at.txt"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          outcomes = {
+              "preflight": os.environ["PREFLIGHT_OUTCOME"],
+              "wif_exchange_and_join": os.environ["WIF_OUTCOME"],
+              "tailscale_state": os.environ["TAILSCALE_STATE_OUTCOME"],
+              "target_ping": os.environ["PING_OUTCOME"],
+              "tailscale_ssh": os.environ["SSH_OUTCOME"],
+          }
+          success = all(value == "success" for value in outcomes.values())
+          summary = {
+              "configuration": "wif_basic",
+              "outcomes": outcomes,
+              "proof_result": "pass" if success else "fail",
+          }
+          evidence_dir = Path(os.environ["EVIDENCE_DIR"])
+          evidence_dir.joinpath("proof-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("## WIF Connectivity Proof\n\n")
+              output.write(f"**Result:** {'PASS' if success else 'FAIL'}\n\n")
+              output.write("| Stage | Outcome |\n|---|---|\n")
+              for stage, outcome in outcomes.items():
+                  output.write(f"| `{stage}` | {outcome.upper()} |\n")
+              output.write("\nEvidence is available in the `wif-poc` workflow artifact.\n")
+          PY
+
+          (
+            cd "${EVIDENCE_DIR}"
+            find . -maxdepth 1 -type f ! -name manifest.sha256 -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > manifest.sha256
+          )
+
+      - name: Upload proof evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wif-poc-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
