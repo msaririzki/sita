@@ -1,0 +1,311 @@
+name: Authentication experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: Observatory experiment ULID
+        required: true
+        type: string
+      trial_id:
+        description: Observatory trial ULID
+        required: true
+        type: string
+      profile:
+        description: Authentication profile
+        required: true
+        type: choice
+        options:
+          - wif_basic
+          - oauth_static
+          - wif_multi_claim
+      scenario:
+        description: Controlled scenario
+        required: true
+        type: string
+      expected_decision:
+        description: Preregistered decision
+        required: true
+        type: choice
+        options:
+          - allow
+          - deny
+      repetition:
+        description: Sequential repetition number
+        required: true
+        type: string
+      target:
+        description: Allowlisted logical target
+        required: true
+        type: string
+      commit_sha:
+        description: Optional SHA that must match the dispatched ref
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-experiment-${{ inputs.experiment_id }}
+  cancel-in-progress: false
+
+jobs:
+  wif-basic:
+    name: WIF basic trial ${{ inputs.repetition }}
+    if: inputs.profile == 'wif_basic'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EVIDENCE_DIR: evidence
+      TARGET_HOST: ${{ vars.SITA_TARGET_TS_HOST }}
+      TARGET_USER: ${{ vars.SITA_TARGET_USER || 'ServerDeploy' }}
+
+    steps:
+      - name: Checkout the dispatched ref
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate preregistered trial
+        id: preflight
+        env:
+          TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
+          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+
+          python3 - <<'PY'
+          import os
+          import re
+
+          required = {
+              "experiment_id": "${{ inputs.experiment_id }}",
+              "trial_id": "${{ inputs.trial_id }}",
+              "target": "${{ inputs.target }}",
+              "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
+              "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
+              "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
+          }
+          missing = [name for name, value in required.items() if not value.strip()]
+          if missing:
+              raise SystemExit("Missing configuration: " + ", ".join(missing))
+
+          if "${{ inputs.scenario }}" != "valid":
+              raise SystemExit("The first pilot supports only scenario=valid")
+
+          if "${{ inputs.expected_decision }}" != "allow":
+              raise SystemExit("The valid pilot must preregister expected_decision=allow")
+
+          if "${{ inputs.target }}" != "sita-docker":
+              raise SystemExit("Target is outside the pilot allowlist")
+
+          repetition = "${{ inputs.repetition }}"
+          if not re.fullmatch(r"[1-9][0-9]{0,2}", repetition):
+              raise SystemExit("Repetition must be an integer from 1 to 999")
+
+          expected_sha = "${{ inputs.commit_sha }}".strip()
+          if expected_sha and expected_sha != os.environ["GITHUB_SHA"]:
+              raise SystemExit("Dispatched ref does not resolve to commit_sha")
+          PY
+
+          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
+
+      - name: Capture allowlisted OIDC claims without storing the token
+        id: oidc_claims
+        continue-on-error: true
+        env:
+          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          response="$(curl -fsS \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["TS_WIF_AUDIENCE"], safe=""))')")"
+          oidc_token="$(RESPONSE="${response}" python3 -c 'import json, os; print(json.loads(os.environ["RESPONSE"])["value"])')"
+          echo "::add-mask::${oidc_token}"
+
+          OIDC_TOKEN="${oidc_token}" python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          token = os.environ["OIDC_TOKEN"]
+          payload_segment = token.split(".")[1]
+          payload_segment += "=" * (-len(payload_segment) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload_segment))
+          allowed = {
+              key: claims.get(key)
+              for key in (
+                  "iss", "aud", "sub", "repository", "repository_id",
+                  "repository_owner_id", "ref", "workflow_ref",
+                  "job_workflow_ref", "event_name", "environment",
+                  "iat", "nbf", "exp",
+              )
+              if key in claims
+          }
+          if claims.get("jti"):
+              allowed["jti_sha256"] = hashlib.sha256(
+                  claims["jti"].encode("utf-8")
+              ).hexdigest()
+          Path(os.environ["EVIDENCE_DIR"], "oidc-claims-sanitized.json").write_text(
+              json.dumps(allowed, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          unset oidc_token response
+
+      - name: Start WIF exchange timer
+        if: steps.preflight.outcome == 'success'
+        run: date +%s%N > "${EVIDENCE_DIR}/authentication-started-ns.txt"
+
+      - name: Join tailnet using GitHub OIDC and Tailscale WIF
+        id: authentication
+        continue-on-error: true
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
+        with:
+          oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
+          audience: ${{ vars.TS_WIF_AUDIENCE }}
+          tags: tag:ci-wif-basic
+
+      - name: Record authentication duration
+        if: always() && steps.preflight.outcome == 'success'
+        run: |
+          set -euo pipefail
+          date +%s%N > "${EVIDENCE_DIR}/authentication-finished-ns.txt"
+
+      - name: Capture sanitized Tailscale state
+        id: tailscale_state
+        if: steps.authentication.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          tailscale status --json | python3 -c '
+          import json
+          import sys
+
+          source = json.load(sys.stdin)
+          own = source.get("Self", {})
+          sanitized = {
+              "backend_state": source.get("BackendState"),
+              "node_id": own.get("ID"),
+              "dns_name": own.get("DNSName"),
+              "tags": own.get("Tags", []),
+          }
+          json.dump(sanitized, sys.stdout, indent=2, sort_keys=True)
+          print()
+          ' > "${EVIDENCE_DIR}/tailscale-state.json"
+
+      - name: Probe the allowlisted target
+        id: reachability
+        if: steps.authentication.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          tailscale ping --until-direct=false -c 3 "${TARGET_HOST}" \
+            > "${EVIDENCE_DIR}/tailscale-ping.txt" 2>&1
+          exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/reachability-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/reachability-finished-ns.txt"
+          exit "${exit_code}"
+
+      - name: Prove identity-bound SSH and Docker access
+        id: target_access
+        if: steps.reachability.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          timeout 30s tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
+            'printf "HOST="; hostname; printf "USER="; id -un; printf "DOCKER="; docker version --format "{{.Server.Version}}"' \
+            > "${EVIDENCE_DIR}/target-access.txt" 2>&1
+          exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/target-access-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/target-access-finished-ns.txt"
+          exit "${exit_code}"
+
+      - name: Finalize sanitized evidence
+        if: always()
+        env:
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          OIDC_CLAIMS_OUTCOME: ${{ steps.oidc_claims.outcome }}
+          AUTH_OUTCOME: ${{ steps.authentication.outcome }}
+          STATE_OUTCOME: ${{ steps.tailscale_state.outcome }}
+          REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
+          TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          python3 scripts/research/finalize_auth_evidence.py \
+            --output "${EVIDENCE_DIR}/trial-evidence.json" \
+            --experiment-id "${{ inputs.experiment_id }}" \
+            --trial-id "${{ inputs.trial_id }}" \
+            --profile "${{ inputs.profile }}" \
+            --scenario "${{ inputs.scenario }}" \
+            --expected-decision "${{ inputs.expected_decision }}" \
+            --repetition "${{ inputs.repetition }}" \
+            --target "${{ inputs.target }}" \
+            --preflight-outcome "${PREFLIGHT_OUTCOME}" \
+            --oidc-claims-outcome "${OIDC_CLAIMS_OUTCOME}" \
+            --auth-outcome "${AUTH_OUTCOME}" \
+            --state-outcome "${STATE_OUTCOME}" \
+            --reachability-outcome "${REACHABILITY_OUTCOME}" \
+            --target-access-outcome "${TARGET_ACCESS_OUTCOME}"
+
+          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/finished-at.txt"
+          (
+            cd "${EVIDENCE_DIR}"
+            find . -maxdepth 1 -type f ! -name manifest.sha256 -print0 \
+              | sort -z \
+              | xargs -0 sha256sum > manifest.sha256
+          )
+
+      - name: Upload immutable trial evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: auth-experiment-${{ inputs.trial_id }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce the preregistered decision
+        if: always()
+        env:
+          AUTH_OUTCOME: ${{ steps.authentication.outcome }}
+          REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
+          TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
+        run: |
+          set -euo pipefail
+          actual=deny
+          if [[ "${AUTH_OUTCOME}" == success && "${REACHABILITY_OUTCOME}" == success && "${TARGET_ACCESS_OUTCOME}" == success ]]; then
+            actual=allow
+          fi
+
+          if [[ "${actual}" != "${{ inputs.expected_decision }}" ]]; then
+            echo "Observed decision ${actual}; expected ${{ inputs.expected_decision }}" >&2
+            exit 1
+          fi
+
+  unsupported-profile:
+    name: Unsupported profile guard
+    if: inputs.profile != 'wif_basic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Explain staged rollout
+        run: |
+          echo "Profile '${{ inputs.profile }}' is not enabled in pilot phase 1." >&2
+          echo "WIF basic is implemented and validated first; other profiles follow sequentially." >&2
+          exit 1
