@@ -131,6 +131,11 @@ The proof passes only when:
 7. The workflow uploads complete evidence and SHA-256 manifest.
 8. The ephemeral runner is removed after the job.
 
+The reachability probe accepts a direct connection or a DERP relay. GitHub-hosted
+runners are ephemeral and can be behind NAT, so requiring a direct path would
+misclassify a working encrypted Tailscale route as a deployment failure. The
+evidence still records the selected path and latency for later analysis.
+
 ## Failure Interpretation
 
 | Failed stage    | Primary interpretation                                         |

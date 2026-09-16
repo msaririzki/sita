@@ -120,7 +120,11 @@ jobs:
           set -euo pipefail
           started_ns="$(date +%s%N)"
           set +e
-          tailscale ping -c 3 "${TARGET_HOST}" > "${EVIDENCE_DIR}/tailscale-ping.txt" 2>&1
+          # A DERP relay is a valid Tailscale path for an ephemeral hosted
+          # runner. Record the path, but do not require a direct peer-to-peer
+          # connection before continuing to the identity-bound SSH proof.
+          tailscale ping --until-direct=false -c 3 "${TARGET_HOST}" \
+            > "${EVIDENCE_DIR}/tailscale-ping.txt" 2>&1
           probe_exit_code=$?
           set -e
           finished_ns="$(date +%s%N)"
