@@ -107,11 +107,15 @@ jobs:
               if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", required[key].upper()):
                   raise SystemExit("Invalid ULID: " + key)
 
-          if os.environ["INPUT_SCENARIO"] != "valid":
-              raise SystemExit("The first pilot supports only scenario=valid")
-
-          if os.environ["INPUT_EXPECTED_DECISION"] != "allow":
-              raise SystemExit("The valid pilot must preregister expected_decision=allow")
+          expected_by_scenario = {
+              "valid": "allow",
+              "wrong_audience": "deny",
+          }
+          scenario = os.environ["INPUT_SCENARIO"]
+          if scenario not in expected_by_scenario:
+              raise SystemExit("Unsupported WIF basic scenario: " + scenario)
+          if os.environ["INPUT_EXPECTED_DECISION"] != expected_by_scenario[scenario]:
+              raise SystemExit("Expected decision does not match the controlled scenario")
 
           if os.environ["INPUT_TARGET"] != "sita-docker":
               raise SystemExit("Target is outside the pilot allowlist")
@@ -127,12 +131,33 @@ jobs:
 
           date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
 
+      - name: Select the controlled WIF audience
+        id: auth_policy
+        if: steps.preflight.outcome == 'success'
+        env:
+          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          case "${INPUT_SCENARIO}" in
+            valid)
+              effective_audience="${TS_WIF_AUDIENCE}"
+              ;;
+            wrong_audience)
+              effective_audience="${TS_WIF_AUDIENCE}/controlled-mismatch"
+              ;;
+            *)
+              echo "Unsupported scenario reached policy selection" >&2
+              exit 1
+              ;;
+          esac
+          printf 'wif_audience=%s\n' "${effective_audience}" >> "${GITHUB_OUTPUT}"
+
       - name: Capture allowlisted OIDC claims without storing the token
         id: oidc_claims
         if: steps.preflight.outcome == 'success'
         continue-on-error: true
         env:
-          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+          TS_WIF_AUDIENCE: ${{ steps.auth_policy.outputs.wif_audience }}
         run: |
           set -euo pipefail
           response="$(curl -fsS \
@@ -184,7 +209,7 @@ jobs:
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
         with:
           oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
-          audience: ${{ vars.TS_WIF_AUDIENCE }}
+          audience: ${{ steps.auth_policy.outputs.wif_audience }}
           tags: tag:ci-wif-basic
 
       - name: Record authentication duration
