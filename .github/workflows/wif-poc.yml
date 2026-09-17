@@ -1,4 +1,4 @@
-name: WIF connectivity proof
+name: WIF private deployment proof
 
 on:
   workflow_dispatch:
@@ -275,6 +275,51 @@ jobs:
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/target-access-finished-ns.txt"
           exit "${exit_code}"
 
+      - name: Deploy the exact candidate to the isolated SITA lab
+        id: deployment
+        if: steps.target_access.outcome == 'success' && inputs.scenario == 'valid'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          timeout 12m tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
+            "DEPLOY_COMMIT_SHA='${GITHUB_SHA}' bash -se" <<'REMOTE'
+          set -euo pipefail
+          deploy_path=/home/ServerDeploy/apps/sita-wif-deploy
+          test -d "$deploy_path/.git"
+          cd "$deploy_path"
+          git fetch --depth=1 origin "$DEPLOY_COMMIT_SHA"
+          git checkout --detach "$DEPLOY_COMMIT_SHA"
+          COMPOSE_PROJECT_NAME=sita_wif_deploy \
+          HEALTHCHECK_URL=http://127.0.0.1:8098/up \
+          bash scripts/deploy-via-compose.sh
+          REMOTE
+          exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/deployment-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/deployment-finished-ns.txt"
+          exit "${exit_code}"
+
+      - name: Verify the isolated SITA health endpoint
+        id: application_healthcheck
+        if: steps.deployment.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          started_ns="$(date +%s%N)"
+          set +e
+          timeout 30s tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
+            'curl --fail --silent --show-error http://127.0.0.1:8098/up' \
+            > "${EVIDENCE_DIR}/application-healthcheck.txt" 2>&1
+          exit_code=$?
+          set -e
+          finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/healthcheck-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/healthcheck-finished-ns.txt"
+          exit "${exit_code}"
+
       - name: Finalize sanitized evidence
         if: always()
         env:
@@ -284,6 +329,8 @@ jobs:
           STATE_OUTCOME: ${{ steps.tailscale_state.outcome }}
           REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
           TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
+          DEPLOYMENT_OUTCOME: ${{ steps.deployment.outcome }}
+          HEALTHCHECK_OUTCOME: ${{ steps.application_healthcheck.outcome }}
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
@@ -301,7 +348,9 @@ jobs:
             --auth-outcome "${AUTH_OUTCOME}" \
             --state-outcome "${STATE_OUTCOME}" \
             --reachability-outcome "${REACHABILITY_OUTCOME}" \
-            --target-access-outcome "${TARGET_ACCESS_OUTCOME}"
+            --target-access-outcome "${TARGET_ACCESS_OUTCOME}" \
+            --deployment-outcome "${DEPLOYMENT_OUTCOME}" \
+            --healthcheck-outcome "${HEALTHCHECK_OUTCOME}"
 
           date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/finished-at.txt"
           (
@@ -350,6 +399,9 @@ jobs:
           AUTH_OUTCOME: ${{ steps.authentication.outcome }}
           REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
           TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
+          DEPLOYMENT_OUTCOME: ${{ steps.deployment.outcome }}
+          HEALTHCHECK_OUTCOME: ${{ steps.application_healthcheck.outcome }}
+          INPUT_SCENARIO: ${{ inputs.scenario }}
         run: |
           set -euo pipefail
           actual=deny
@@ -359,6 +411,11 @@ jobs:
 
           if [[ "${actual}" != "${INPUT_EXPECTED_DECISION}" ]]; then
             echo "Observed decision ${actual}; expected ${INPUT_EXPECTED_DECISION}" >&2
+            exit 1
+          fi
+
+          if [[ "${INPUT_SCENARIO}" == valid && ( "${DEPLOYMENT_OUTCOME}" != success || "${HEALTHCHECK_OUTCOME}" != success ) ]]; then
+            echo "WIF access succeeded but the isolated SITA deployment or healthcheck failed" >&2
             exit 1
           fi
 

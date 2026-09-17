@@ -75,7 +75,7 @@ services:
       app:
         condition: service_healthy
     ports:
-      - '8088:80'
+      - '${HTTP_EXPOSE_PORT:-8088}:80'
     volumes:
       - storage_data:/var/www/html/storage:ro
 

@@ -25,6 +25,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--state-outcome", required=True)
     parser.add_argument("--reachability-outcome", required=True)
     parser.add_argument("--target-access-outcome", required=True)
+    parser.add_argument("--deployment-outcome", required=True)
+    parser.add_argument("--healthcheck-outcome", required=True)
     return parser.parse_args()
 
 
@@ -123,11 +125,13 @@ def main() -> None:
             stage("wif_exchange_and_join", args.auth_outcome, duration_ms(evidence_dir, "authentication")),
             stage("target_reachability", args.reachability_outcome, duration_ms(evidence_dir, "reachability")),
             stage("tailscale_ssh", args.target_access_outcome, duration_ms(evidence_dir, "target-access")),
+            stage("docker_deployment", args.deployment_outcome, duration_ms(evidence_dir, "deployment")),
+            stage("application_healthcheck", args.healthcheck_outcome, duration_ms(evidence_dir, "healthcheck")),
         ],
         "integrity": {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            "collector_version": "0.1.0",
-            "policy_version": "wif-basic-pilot-1",
+            "collector_version": "0.2.0",
+            "policy_version": "wif-basic-deployment-1",
         },
     }
     output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
