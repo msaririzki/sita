@@ -114,6 +114,12 @@ def main() -> None:
     ]
     failure = next((item for item in stages if item["status"] == "fail"), None)
 
+    policy_version = {
+        "oauth_static": "oauth-static-deployment-1",
+        "wif_basic": "wif-basic-deployment-1",
+        "wif_multi_claim": "wif-multi-claim-deployment-1",
+    }.get(args.profile, "unknown")
+
     evidence = {
         "schema_version": "1.0.0",
         "experiment_id": args.experiment_id,
@@ -147,7 +153,7 @@ def main() -> None:
         "integrity": {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "collector_version": "0.2.0",
-            "policy_version": "wif-basic-deployment-1",
+            "policy_version": policy_version,
         },
     }
     output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")

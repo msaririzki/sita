@@ -51,9 +51,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  wif-basic:
-    name: WIF basic trial ${{ inputs.repetition }}
-    if: inputs.profile == 'wif_basic'
+  authentication-trial:
+    name: Authentication trial ${{ inputs.repetition }} (${{ inputs.profile }})
+    if: inputs.profile == 'wif_basic' || inputs.profile == 'oauth_static'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -89,6 +89,8 @@ jobs:
         env:
           TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
           TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+          TS_OAUTH_STATIC_CLIENT_ID: ${{ vars.TS_OAUTH_STATIC_CLIENT_ID }}
+          TS_OAUTH_STATIC_SECRET: ${{ secrets.TS_OAUTH_STATIC_SECRET }}
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
@@ -102,11 +104,22 @@ jobs:
               "experiment_id": os.environ["INPUT_EXPERIMENT_ID"],
               "trial_id": os.environ["INPUT_TRIAL_ID"],
               "target": os.environ["INPUT_TARGET"],
-              "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
-              "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
               "AUTH_OBSERVATORY_URL": os.environ.get("AUTH_OBSERVATORY_URL", ""),
               "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
           }
+          profile = os.environ["INPUT_PROFILE"]
+          if profile == "wif_basic":
+              required.update({
+                  "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
+                  "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
+              })
+          elif profile == "oauth_static":
+              required.update({
+                  "TS_OAUTH_STATIC_CLIENT_ID": os.environ.get("TS_OAUTH_STATIC_CLIENT_ID", ""),
+                  "TS_OAUTH_STATIC_SECRET": os.environ.get("TS_OAUTH_STATIC_SECRET", ""),
+              })
+          else:
+              raise SystemExit("Unsupported authentication profile")
           missing = [name for name, value in required.items() if not value.strip()]
           if missing:
               raise SystemExit("Missing configuration: " + ", ".join(missing))
@@ -115,13 +128,14 @@ jobs:
               if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", required[key].upper()):
                   raise SystemExit("Invalid ULID: " + key)
 
-          expected_by_scenario = {
-              "valid": "allow",
-              "wrong_audience": "deny",
-          }
+          expected_by_scenario = (
+              {"valid": "allow", "wrong_audience": "deny"}
+              if profile == "wif_basic"
+              else {"valid": "allow"}
+          )
           scenario = os.environ["INPUT_SCENARIO"]
           if scenario not in expected_by_scenario:
-              raise SystemExit("Unsupported WIF basic scenario: " + scenario)
+              raise SystemExit("Unsupported scenario for selected authentication profile: " + scenario)
           if os.environ["INPUT_EXPECTED_DECISION"] != expected_by_scenario[scenario]:
               raise SystemExit("Expected decision does not match the controlled scenario")
 
@@ -156,7 +170,7 @@ jobs:
 
       - name: Select the controlled WIF audience
         id: auth_policy
-        if: steps.preflight.outcome == 'success'
+        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
         env:
           TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
         run: |
@@ -176,13 +190,13 @@ jobs:
           printf 'wif_audience=%s\n' "${effective_audience}" >> "${GITHUB_OUTPUT}"
 
       - name: Report OIDC claim reading started
-        if: steps.preflight.outcome == 'success'
+        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
         continue-on-error: true
         run: bash scripts/research/report_trial_progress.sh oidc_claim_capture running
 
       - name: Capture allowlisted OIDC claims without storing the token
         id: oidc_claims
-        if: steps.preflight.outcome == 'success'
+        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
         continue-on-error: true
         env:
           TS_WIF_AUDIENCE: ${{ steps.auth_policy.outputs.wif_audience }}
@@ -241,24 +255,30 @@ jobs:
             bash scripts/research/report_trial_progress.sh oidc_claim_capture fail OIDC_CLAIMS_UNAVAILABLE 'Klaim identitas GitHub tidak dapat dibaca.'
           fi
 
-      - name: Report WIF access started
-        if: steps.preflight.outcome == 'success' && steps.oidc_claims.outcome == 'success'
+      - name: Record OAuth baseline without a Tailscale OIDC token
+        if: steps.preflight.outcome == 'success' && inputs.profile == 'oauth_static'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh oidc_claim_capture skipped '' 'OAuth statis tidak memakai token OIDC untuk autentikasi Tailscale.'
+
+      - name: Report Tailscale access started
+        if: steps.preflight.outcome == 'success' && (inputs.profile == 'oauth_static' || steps.oidc_claims.outcome == 'success')
         continue-on-error: true
         run: bash scripts/research/report_trial_progress.sh wif_exchange_and_join running
 
-      - name: Start WIF exchange timer
+      - name: Start Tailscale authentication timer
         if: steps.preflight.outcome == 'success'
         run: date +%s%N > "${EVIDENCE_DIR}/authentication-started-ns.txt"
 
-      - name: Join tailnet using GitHub OIDC and Tailscale WIF
+      - name: Join tailnet using the selected authentication profile
         id: authentication
-        if: steps.preflight.outcome == 'success' && steps.oidc_claims.outcome == 'success'
+        if: steps.preflight.outcome == 'success' && (inputs.profile == 'oauth_static' || steps.oidc_claims.outcome == 'success')
         continue-on-error: true
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
         with:
-          oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
-          audience: ${{ steps.auth_policy.outputs.wif_audience }}
-          tags: tag:ci-wif-basic
+          oauth-client-id: ${{ inputs.profile == 'oauth_static' && vars.TS_OAUTH_STATIC_CLIENT_ID || vars.TS_WIF_CLIENT_ID }}
+          oauth-secret: ${{ inputs.profile == 'oauth_static' && secrets.TS_OAUTH_STATIC_SECRET || '' }}
+          audience: ${{ inputs.profile == 'wif_basic' && steps.auth_policy.outputs.wif_audience || '' }}
+          tags: ${{ inputs.profile == 'oauth_static' && 'tag:ci-oauth-static' || 'tag:ci-wif-basic' }}
 
       - name: Record authentication duration
         if: always() && steps.preflight.outcome == 'success'
@@ -266,7 +286,7 @@ jobs:
           set -euo pipefail
           date +%s%N > "${EVIDENCE_DIR}/authentication-finished-ns.txt"
 
-      - name: Report WIF access result
+      - name: Report Tailscale access result
         if: always() && steps.authentication.outcome != 'skipped'
         continue-on-error: true
         env:
@@ -275,7 +295,7 @@ jobs:
           if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
             bash scripts/research/report_trial_progress.sh wif_exchange_and_join pass
           else
-            bash scripts/research/report_trial_progress.sh wif_exchange_and_join fail WIF_ACCESS_DENIED 'Tailscale menolak pertukaran OIDC atau WIF sesuai kebijakan.'
+            bash scripts/research/report_trial_progress.sh wif_exchange_and_join fail TAILSCALE_AUTHENTICATION_DENIED 'Tailscale menolak autentikasi atau akses sesuai kebijakan.'
           fi
 
       - name: Capture sanitized Tailscale state
@@ -472,7 +492,7 @@ jobs:
             --repetition "${INPUT_REPETITION}" \
             --target "${INPUT_TARGET}" \
             --preflight-outcome "${PREFLIGHT_OUTCOME}" \
-            --oidc-claims-outcome "${OIDC_CLAIMS_OUTCOME}" \
+            --oidc-claims-outcome "${OIDC_CLAIMS_OUTCOME:-skipped}" \
             --auth-outcome "${AUTH_OUTCOME}" \
             --state-outcome "${STATE_OUTCOME}" \
             --reachability-outcome "${REACHABILITY_OUTCOME}" \
@@ -549,7 +569,7 @@ jobs:
 
   unsupported-profile:
     name: Unsupported profile guard
-    if: inputs.profile != 'wif_basic'
+    if: inputs.profile != 'wif_basic' && inputs.profile != 'oauth_static'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -559,5 +579,5 @@ jobs:
           INPUT_PROFILE: ${{ inputs.profile }}
         run: |
           echo "Profile '${INPUT_PROFILE}' is not enabled in pilot phase 1." >&2
-          echo "WIF basic is implemented and validated first; other profiles follow sequentially." >&2
+          echo "WIF basic and OAuth static are implemented; WIF multi-claim follows after its policy is configured." >&2
           exit 1

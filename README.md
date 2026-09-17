@@ -306,3 +306,24 @@ Untuk Tailscale ACL, pastikan node CI (`tag:ci`) diizinkan akses ke server deplo
 ```
 
 Ganti `100.101.102.103` dengan Tailscale IP server kamu.
+
+## Baseline OAuth statis untuk penelitian
+
+Workflow `.github/workflows/wif-poc.yml` menyediakan profile `oauth_static`
+khusus pembanding WIF. Profile ini memakai OAuth Client laboratorium yang
+berbeda dari credential deployment production dan membaca dua nilai berikut
+dari GitHub saat workflow berjalan:
+
+- Variable `TS_OAUTH_STATIC_CLIENT_ID`;
+- encrypted secret `TS_OAUTH_STATIC_SECRET`.
+
+OAuth Client harus hanya memiliki scope `auth_keys`, diizinkan menerbitkan tag
+`tag:ci-oauth-static`, dan ACL hanya boleh mengakses target SITA laboratorium
+yang telah diizinkan. Client ID boleh dicatat sebagai konfigurasi non-rahasia,
+tetapi secret tidak boleh ditulis ke repository, log, artifact, Observatory,
+atau dokumen skripsi.
+
+Pada profile ini tahap OIDC ditampilkan sebagai `skipped`: token OIDC tidak
+dipakai untuk autentikasi Tailscale. GitHub tetap menerbitkan token OIDC kedua
+yang hanya dipakai untuk menandatangani pengiriman bukti ke Observatory. Ini
+memisahkan mekanisme autentikasi yang diuji dari mekanisme integritas bukti.
