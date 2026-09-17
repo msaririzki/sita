@@ -61,6 +61,7 @@ jobs:
       id-token: write
     env:
       EVIDENCE_DIR: evidence
+      AUTH_OBSERVATORY_URL: ${{ vars.AUTH_OBSERVATORY_URL }}
       TARGET_HOST: ${{ vars.SITA_TARGET_TS_HOST }}
       TARGET_USER: ${{ vars.SITA_TARGET_USER || 'ServerDeploy' }}
       INPUT_EXPERIMENT_ID: ${{ inputs.experiment_id }}
@@ -95,6 +96,7 @@ jobs:
               "target": os.environ["INPUT_TARGET"],
               "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
               "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
+              "AUTH_OBSERVATORY_URL": os.environ.get("AUTH_OBSERVATORY_URL", ""),
               "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
           }
           missing = [name for name, value in required.items() if not value.strip()]
@@ -283,6 +285,30 @@ jobs:
               | sort -z \
               | xargs -0 sha256sum > manifest.sha256
           )
+
+      - name: Submit evidence using a signed GitHub OIDC identity
+        id: evidence_submission
+        if: always() && steps.preflight.outcome == 'success'
+        env:
+          EVIDENCE_AUDIENCE: ${{ vars.AUTH_OBSERVATORY_URL }}/api/v1/evidence
+        run: |
+          set -euo pipefail
+          test -s "${EVIDENCE_DIR}/trial-evidence.json"
+
+          encoded_audience="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["EVIDENCE_AUDIENCE"], safe=""))')"
+          response="$(curl -fsS \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${encoded_audience}")"
+          submission_token="$(RESPONSE="${response}" python3 -c 'import json, os; print(json.loads(os.environ["RESPONSE"])["value"])')"
+          echo "::add-mask::${submission_token}"
+
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${submission_token}" \
+            -H "Content-Type: application/json" \
+            --data-binary "@${EVIDENCE_DIR}/trial-evidence.json" \
+            "${EVIDENCE_AUDIENCE}"
+
+          unset response submission_token
 
       - name: Upload immutable trial evidence
         if: always()
