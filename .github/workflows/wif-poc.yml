@@ -80,6 +80,10 @@ jobs:
       - name: Checkout the dispatched ref
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
+      - name: Report precheck started
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh preflight running
+
       - name: Validate preregistered trial
         id: preflight
         env:
@@ -138,6 +142,18 @@ jobs:
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/preflight-finished-ns.txt"
           date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
 
+      - name: Report precheck result
+        if: always()
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.preflight.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh preflight pass
+          else
+            bash scripts/research/report_trial_progress.sh preflight fail PRECHECK_CONFIGURATION_FAILED 'Parameter eksperimen atau konfigurasi wajib tidak sesuai.'
+          fi
+
       - name: Select the controlled WIF audience
         id: auth_policy
         if: steps.preflight.outcome == 'success'
@@ -158,6 +174,11 @@ jobs:
               ;;
           esac
           printf 'wif_audience=%s\n' "${effective_audience}" >> "${GITHUB_OUTPUT}"
+
+      - name: Report OIDC claim reading started
+        if: steps.preflight.outcome == 'success'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh oidc_claim_capture running
 
       - name: Capture allowlisted OIDC claims without storing the token
         id: oidc_claims
@@ -208,6 +229,23 @@ jobs:
           PY
           unset oidc_token response
 
+      - name: Report OIDC claim reading result
+        if: always() && steps.oidc_claims.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.oidc_claims.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh oidc_claim_capture pass
+          else
+            bash scripts/research/report_trial_progress.sh oidc_claim_capture fail OIDC_CLAIMS_UNAVAILABLE 'Klaim identitas GitHub tidak dapat dibaca.'
+          fi
+
+      - name: Report WIF access started
+        if: steps.preflight.outcome == 'success' && steps.oidc_claims.outcome == 'success'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh wif_exchange_and_join running
+
       - name: Start WIF exchange timer
         if: steps.preflight.outcome == 'success'
         run: date +%s%N > "${EVIDENCE_DIR}/authentication-started-ns.txt"
@@ -227,6 +265,18 @@ jobs:
         run: |
           set -euo pipefail
           date +%s%N > "${EVIDENCE_DIR}/authentication-finished-ns.txt"
+
+      - name: Report WIF access result
+        if: always() && steps.authentication.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.authentication.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh wif_exchange_and_join pass
+          else
+            bash scripts/research/report_trial_progress.sh wif_exchange_and_join fail WIF_ACCESS_DENIED 'Tailscale menolak pertukaran OIDC atau WIF sesuai kebijakan.'
+          fi
 
       - name: Capture sanitized Tailscale state
         id: tailscale_state
@@ -250,6 +300,11 @@ jobs:
           print()
           ' > "${EVIDENCE_DIR}/tailscale-state.json"
 
+      - name: Report private network probe started
+        if: steps.authentication.outcome == 'success'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh target_reachability running
+
       - name: Probe the allowlisted target
         id: reachability
         if: steps.authentication.outcome == 'success'
@@ -266,6 +321,23 @@ jobs:
           printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/reachability-started-ns.txt"
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/reachability-finished-ns.txt"
           exit "${exit_code}"
+
+      - name: Report private network probe result
+        if: always() && steps.reachability.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.reachability.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh target_reachability pass
+          else
+            bash scripts/research/report_trial_progress.sh target_reachability fail PRIVATE_TARGET_UNREACHABLE 'VM SITA tidak dapat dijangkau melalui jaringan privat.'
+          fi
+
+      - name: Report server access started
+        if: steps.reachability.outcome == 'success'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh tailscale_ssh running
 
       - name: Prove identity-bound SSH and Docker access
         id: target_access
@@ -284,6 +356,23 @@ jobs:
           printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/target-access-started-ns.txt"
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/target-access-finished-ns.txt"
           exit "${exit_code}"
+
+      - name: Report server access result
+        if: always() && steps.target_access.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.target_access.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh tailscale_ssh pass
+          else
+            bash scripts/research/report_trial_progress.sh tailscale_ssh fail SSH_OR_DOCKER_ACCESS_FAILED 'Akses identitas ke VM atau layanan Docker gagal.'
+          fi
+
+      - name: Report candidate deployment started
+        if: steps.target_access.outcome == 'success' && inputs.scenario == 'valid'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh docker_deployment running
 
       - name: Deploy the exact candidate to the isolated SITA lab
         id: deployment
@@ -312,6 +401,23 @@ jobs:
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/deployment-finished-ns.txt"
           exit "${exit_code}"
 
+      - name: Report candidate deployment result
+        if: always() && steps.deployment.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.deployment.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh docker_deployment pass
+          else
+            bash scripts/research/report_trial_progress.sh docker_deployment fail DOCKER_DEPLOYMENT_FAILED 'Kandidat tidak berhasil dibangun atau dijalankan oleh Docker.'
+          fi
+
+      - name: Report application healthcheck started
+        if: steps.deployment.outcome == 'success'
+        continue-on-error: true
+        run: bash scripts/research/report_trial_progress.sh application_healthcheck running
+
       - name: Verify the isolated SITA health endpoint
         id: application_healthcheck
         if: steps.deployment.outcome == 'success'
@@ -329,6 +435,18 @@ jobs:
           printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/healthcheck-started-ns.txt"
           printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/healthcheck-finished-ns.txt"
           exit "${exit_code}"
+
+      - name: Report application healthcheck result
+        if: always() && steps.application_healthcheck.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          STAGE_OUTCOME: ${{ steps.application_healthcheck.outcome }}
+        run: |
+          if [[ "${STAGE_OUTCOME}" == 'success' ]]; then
+            bash scripts/research/report_trial_progress.sh application_healthcheck pass
+          else
+            bash scripts/research/report_trial_progress.sh application_healthcheck fail APPLICATION_HEALTHCHECK_FAILED 'Endpoint kesehatan aplikasi kandidat tidak merespons sukses.'
+          fi
 
       - name: Finalize sanitized evidence
         if: always()
