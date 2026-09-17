@@ -12,7 +12,7 @@ RUN if [ "$INSTALL_DEV_DEPENDENCIES" = "true" ]; then \
     fi
 
 
-FROM php:8.4-cli-alpine AS assets
+FROM node:22-bookworm-slim AS assets
 
 WORKDIR /var/www/html
 
@@ -25,21 +25,6 @@ ENV VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY}
 ENV VITE_REVERB_HOST=${VITE_REVERB_HOST}
 ENV VITE_REVERB_PORT=${VITE_REVERB_PORT}
 ENV VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}
-
-RUN retry() { \
-        attempts=$1; \
-        shift; \
-        count=1; \
-        while [ "$count" -le "$attempts" ]; do \
-            "$@" && return 0; \
-            if [ "$count" -eq "$attempts" ]; then \
-                return 1; \
-            fi; \
-            count=$((count + 1)); \
-            sleep 5; \
-        done; \
-    }; \
-    retry 3 apk add --no-cache nodejs npm
 
 COPY package.json package-lock.json ./
 
