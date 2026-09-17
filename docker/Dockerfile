@@ -12,7 +12,7 @@ RUN if [ "$INSTALL_DEV_DEPENDENCIES" = "true" ]; then \
     fi
 
 
-FROM node:22-bookworm-slim AS assets
+FROM php:8.4-cli-alpine AS assets
 
 WORKDIR /var/www/html
 
@@ -41,7 +41,23 @@ RUN retry() { \
             sleep 5; \
         done; \
     }; \
-    retry 3 npm ci
+    retry 3 apk add --no-cache nodejs npm
+
+RUN retry() { \
+        attempts=$1; \
+        shift; \
+        count=1; \
+        while [ "$count" -le "$attempts" ]; do \
+            "$@" && return 0; \
+            if [ "$count" -eq "$attempts" ]; then \
+                return 1; \
+            fi; \
+            count=$((count + 1)); \
+            sleep 5; \
+        done; \
+    }; \
+    retry 3 npm ci \
+    && retry 3 npm install --no-save --no-package-lock lightningcss-linux-x64-musl@1.30.2
 
 COPY . .
 COPY --from=vendor /var/www/html/vendor ./vendor
