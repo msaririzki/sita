@@ -49,11 +49,20 @@ def classification(expected: str, actual: str) -> str:
 
 def stage(name: str, outcome: str, duration: float) -> dict:
     status = {"success": "pass", "failure": "fail"}.get(outcome, "skipped")
+    reason_codes = {
+        "preflight": "PRECHECK_CONFIGURATION_FAILED",
+        "oidc_claim_capture": "OIDC_CLAIMS_UNAVAILABLE",
+        "wif_exchange_and_join": "WIF_ACCESS_DENIED",
+        "target_reachability": "PRIVATE_TARGET_UNREACHABLE",
+        "tailscale_ssh": "SSH_OR_DOCKER_ACCESS_FAILED",
+        "docker_deployment": "DOCKER_DEPLOYMENT_FAILED",
+        "application_healthcheck": "APPLICATION_HEALTHCHECK_FAILED",
+    }
     return {
         "name": name,
         "status": status,
         "duration_ms": duration,
-        "reason_code": None,
+        "reason_code": reason_codes[name] if status == "fail" else None,
     }
 
 
@@ -90,6 +99,21 @@ def main() -> None:
     claims_file = evidence_dir / "oidc-claims-sanitized.json"
     oidc_claims = json.loads(claims_file.read_text()) if claims_file.exists() else None
 
+    stages = [
+        stage("preflight", args.preflight_outcome, duration_ms(evidence_dir, "preflight")),
+        stage(
+            "oidc_claim_capture",
+            args.oidc_claims_outcome,
+            duration_ms(evidence_dir, "oidc-claim-capture"),
+        ),
+        stage("wif_exchange_and_join", args.auth_outcome, duration_ms(evidence_dir, "authentication")),
+        stage("target_reachability", args.reachability_outcome, duration_ms(evidence_dir, "reachability")),
+        stage("tailscale_ssh", args.target_access_outcome, duration_ms(evidence_dir, "target-access")),
+        stage("docker_deployment", args.deployment_outcome, duration_ms(evidence_dir, "deployment")),
+        stage("application_healthcheck", args.healthcheck_outcome, duration_ms(evidence_dir, "healthcheck")),
+    ]
+    failure = next((item for item in stages if item["status"] == "fail"), None)
+
     evidence = {
         "schema_version": "1.0.0",
         "experiment_id": args.experiment_id,
@@ -101,7 +125,7 @@ def main() -> None:
         "expected_decision": args.expected_decision,
         "actual_decision": actual,
         "classification": classification(args.expected_decision, actual),
-        "reason_code": None if allowed else "AUTHENTICATION_OR_ACCESS_DENIED",
+        "reason_code": failure["reason_code"] if failure else None,
         "github": {
             "repository": os.environ["GITHUB_REPOSITORY"],
             "repository_id": os.environ["GITHUB_REPOSITORY_ID"],
@@ -119,19 +143,7 @@ def main() -> None:
         },
         "oidc_claims": oidc_claims,
         "tailscale": tailscale,
-        "stages": [
-            stage("preflight", args.preflight_outcome, duration_ms(evidence_dir, "preflight")),
-            stage(
-                "oidc_claim_capture",
-                args.oidc_claims_outcome,
-                duration_ms(evidence_dir, "oidc-claim-capture"),
-            ),
-            stage("wif_exchange_and_join", args.auth_outcome, duration_ms(evidence_dir, "authentication")),
-            stage("target_reachability", args.reachability_outcome, duration_ms(evidence_dir, "reachability")),
-            stage("tailscale_ssh", args.target_access_outcome, duration_ms(evidence_dir, "target-access")),
-            stage("docker_deployment", args.deployment_outcome, duration_ms(evidence_dir, "deployment")),
-            stage("application_healthcheck", args.healthcheck_outcome, duration_ms(evidence_dir, "healthcheck")),
-        ],
+        "stages": stages,
         "integrity": {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "collector_version": "0.2.0",
