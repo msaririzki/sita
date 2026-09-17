@@ -62,8 +62,11 @@ jobs:
     env:
       EVIDENCE_DIR: evidence
       AUTH_OBSERVATORY_URL: ${{ vars.AUTH_OBSERVATORY_URL }}
-      TARGET_HOST: ${{ vars.SITA_TARGET_TS_HOST }}
-      TARGET_USER: ${{ vars.SITA_TARGET_USER || 'ServerDeploy' }}
+      # This thesis workflow has one deliberately allowlisted private target.
+      # Keeping the identity here prevents an accidental GitHub variable change
+      # from redirecting a research run to another Tailscale machine.
+      TARGET_HOST: sita-docker
+      TARGET_USER: ServerDeploy
       INPUT_EXPERIMENT_ID: ${{ inputs.experiment_id }}
       INPUT_TRIAL_ID: ${{ inputs.trial_id }}
       INPUT_PROFILE: ${{ inputs.profile }}
@@ -266,7 +269,7 @@ jobs:
           started_ns="$(date +%s%N)"
           set +e
           timeout 30s tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
-            'printf "HOST="; hostname; printf "USER="; id -un; printf "DOCKER="; docker version --format "{{.Server.Version}}"' \
+            'host="$(hostname)"; user="$(id -un)"; printf "HOST=%s\\nUSER=%s\\nDOCKER=" "$host" "$user"; docker version --format "{{.Server.Version}}"; test "$host" = "sita-docker"; test "$user" = "ServerDeploy"' \
             > "${EVIDENCE_DIR}/target-access.txt" 2>&1
           exit_code=$?
           set -e
