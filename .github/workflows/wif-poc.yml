@@ -1,34 +1,82 @@
 name: WIF connectivity proof
 
 on:
-  push:
-    branches:
-      - codex/wif-poc
   workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: Observatory experiment ULID
+        required: true
+        type: string
+      trial_id:
+        description: Observatory trial ULID
+        required: true
+        type: string
+      profile:
+        description: Authentication profile
+        required: true
+        type: choice
+        options:
+          - wif_basic
+          - oauth_static
+          - wif_multi_claim
+      scenario:
+        description: Controlled scenario
+        required: true
+        type: string
+      expected_decision:
+        description: Preregistered decision
+        required: true
+        type: choice
+        options:
+          - allow
+          - deny
+      repetition:
+        description: Sequential repetition number
+        required: true
+        type: string
+      target:
+        description: Allowlisted logical target
+        required: true
+        type: string
+      commit_sha:
+        description: Optional SHA that must match the dispatched ref
+        required: false
+        type: string
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: wif-poc-${{ github.ref }}
+  group: auth-experiment-${{ inputs.experiment_id }}
   cancel-in-progress: false
 
 jobs:
-  prove-wif-connectivity:
-    name: Prove WIF and Tailscale SSH
+  wif-basic:
+    name: WIF basic trial ${{ inputs.repetition }}
+    if: inputs.profile == 'wif_basic'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      id-token: write
     env:
       EVIDENCE_DIR: evidence
       TARGET_HOST: ${{ vars.SITA_TARGET_TS_HOST }}
       TARGET_USER: ${{ vars.SITA_TARGET_USER || 'ServerDeploy' }}
+      INPUT_EXPERIMENT_ID: ${{ inputs.experiment_id }}
+      INPUT_TRIAL_ID: ${{ inputs.trial_id }}
+      INPUT_PROFILE: ${{ inputs.profile }}
+      INPUT_SCENARIO: ${{ inputs.scenario }}
+      INPUT_EXPECTED_DECISION: ${{ inputs.expected_decision }}
+      INPUT_REPETITION: ${{ inputs.repetition }}
+      INPUT_TARGET: ${{ inputs.target }}
+      INPUT_COMMIT_SHA: ${{ inputs.commit_sha }}
 
     steps:
-      - name: Checkout tested commit
+      - name: Checkout the dispatched ref
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - name: Initialize evidence and validate configuration
+      - name: Validate preregistered trial
         id: preflight
         env:
           TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
@@ -36,62 +84,119 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
-          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
 
           python3 - <<'PY'
+          import os
+          import re
+
+          required = {
+              "experiment_id": os.environ["INPUT_EXPERIMENT_ID"],
+              "trial_id": os.environ["INPUT_TRIAL_ID"],
+              "target": os.environ["INPUT_TARGET"],
+              "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
+              "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
+              "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
+          }
+          missing = [name for name, value in required.items() if not value.strip()]
+          if missing:
+              raise SystemExit("Missing configuration: " + ", ".join(missing))
+
+          for key in ("experiment_id", "trial_id"):
+              if not re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", required[key].upper()):
+                  raise SystemExit("Invalid ULID: " + key)
+
+          if os.environ["INPUT_SCENARIO"] != "valid":
+              raise SystemExit("The first pilot supports only scenario=valid")
+
+          if os.environ["INPUT_EXPECTED_DECISION"] != "allow":
+              raise SystemExit("The valid pilot must preregister expected_decision=allow")
+
+          if os.environ["INPUT_TARGET"] != "sita-docker":
+              raise SystemExit("Target is outside the pilot allowlist")
+
+          repetition = os.environ["INPUT_REPETITION"]
+          if not re.fullmatch(r"[1-9][0-9]{0,2}", repetition):
+              raise SystemExit("Repetition must be an integer from 1 to 999")
+
+          expected_sha = os.environ["INPUT_COMMIT_SHA"].strip()
+          if expected_sha and expected_sha != os.environ["GITHUB_SHA"]:
+              raise SystemExit("Dispatched ref does not resolve to commit_sha")
+          PY
+
+          date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
+
+      - name: Capture allowlisted OIDC claims without storing the token
+        id: oidc_claims
+        if: steps.preflight.outcome == 'success'
+        continue-on-error: true
+        env:
+          TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+        run: |
+          set -euo pipefail
+          response="$(curl -fsS \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["TS_WIF_AUDIENCE"], safe=""))')")"
+          oidc_token="$(RESPONSE="${response}" python3 -c 'import json, os; print(json.loads(os.environ["RESPONSE"])["value"])')"
+          echo "::add-mask::${oidc_token}"
+
+          OIDC_TOKEN="${oidc_token}" python3 - <<'PY'
+          import base64
+          import hashlib
           import json
           import os
           from pathlib import Path
 
-          required = {
-              "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
-              "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
-              "TARGET_HOST": os.environ.get("TARGET_HOST", ""),
-              "TARGET_USER": os.environ.get("TARGET_USER", ""),
+          token = os.environ["OIDC_TOKEN"]
+          payload_segment = token.split(".")[1]
+          payload_segment += "=" * (-len(payload_segment) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload_segment))
+          allowed = {
+              key: claims.get(key)
+              for key in (
+                  "iss", "aud", "sub", "repository", "repository_id",
+                  "repository_owner_id", "ref", "workflow_ref",
+                  "job_workflow_ref", "event_name", "environment",
+                  "iat", "nbf", "exp",
+              )
+              if key in claims
           }
-          missing = [name for name, value in required.items() if not value.strip()]
-
-          metadata = {
-              "schema_version": "poc-1",
-              "configuration": "wif_basic",
-              "repository": os.environ["GITHUB_REPOSITORY"],
-              "repository_id": os.environ.get("GITHUB_REPOSITORY_ID"),
-              "repository_owner_id": os.environ.get("GITHUB_REPOSITORY_OWNER_ID"),
-              "ref": os.environ["GITHUB_REF"],
-              "sha": os.environ["GITHUB_SHA"],
-              "workflow": os.environ["GITHUB_WORKFLOW"],
-              "run_id": os.environ["GITHUB_RUN_ID"],
-              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-              "actor_id": os.environ.get("GITHUB_ACTOR_ID"),
-              "event_name": os.environ["GITHUB_EVENT_NAME"],
-              "runner_os": os.environ["RUNNER_OS"],
-              "runner_arch": os.environ["RUNNER_ARCH"],
-              "target_host": required["TARGET_HOST"],
-              "target_user": required["TARGET_USER"],
-              "missing_configuration": missing,
-          }
-          Path(os.environ["EVIDENCE_DIR"], "run-metadata.json").write_text(
-              json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+          if claims.get("jti"):
+              allowed["jti_sha256"] = hashlib.sha256(
+                  claims["jti"].encode("utf-8")
+              ).hexdigest()
+          Path(os.environ["EVIDENCE_DIR"], "oidc-claims-sanitized.json").write_text(
+              json.dumps(allowed, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
-
-          if missing:
-              raise SystemExit("Missing GitHub repository variables: " + ", ".join(missing))
           PY
+          unset oidc_token response
+
+      - name: Start WIF exchange timer
+        if: steps.preflight.outcome == 'success'
+        run: date +%s%N > "${EVIDENCE_DIR}/authentication-started-ns.txt"
 
       - name: Join tailnet using GitHub OIDC and Tailscale WIF
-        id: wif
+        id: authentication
+        if: steps.preflight.outcome == 'success' && steps.oidc_claims.outcome == 'success'
+        continue-on-error: true
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
         with:
           oauth-client-id: ${{ vars.TS_WIF_CLIENT_ID }}
           audience: ${{ vars.TS_WIF_AUDIENCE }}
           tags: tag:ci-wif-basic
 
-      - name: Capture sanitized Tailscale state
-        id: tailscale-state
+      - name: Record authentication duration
+        if: always() && steps.preflight.outcome == 'success'
         run: |
           set -euo pipefail
-          tailscale version > "${EVIDENCE_DIR}/tailscale-version.txt"
+          date +%s%N > "${EVIDENCE_DIR}/authentication-finished-ns.txt"
+
+      - name: Capture sanitized Tailscale state
+        id: tailscale_state
+        if: steps.authentication.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
           tailscale status --json | python3 -c '
           import json
           import sys
@@ -100,139 +205,78 @@ jobs:
           own = source.get("Self", {})
           sanitized = {
               "backend_state": source.get("BackendState"),
-              "current_tailnet": source.get("CurrentTailnet", {}).get("Name"),
-              "self": {
-                  "id": own.get("ID"),
-                  "host_name": own.get("HostName"),
-                  "dns_name": own.get("DNSName"),
-                  "tailscale_ips": own.get("TailscaleIPs"),
-                  "tags": own.get("Tags"),
-                  "online": own.get("Online"),
-              },
+              "node_id": own.get("ID"),
+              "dns_name": own.get("DNSName"),
+              "tags": own.get("Tags", []),
           }
           json.dump(sanitized, sys.stdout, indent=2, sort_keys=True)
           print()
-          ' > "${EVIDENCE_DIR}/tailscale-status.json"
+          ' > "${EVIDENCE_DIR}/tailscale-state.json"
 
-      - name: Probe target through Tailscale
-        id: ping
+      - name: Probe the allowlisted target
+        id: reachability
+        if: steps.authentication.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           started_ns="$(date +%s%N)"
           set +e
-          # A DERP relay is a valid Tailscale path for an ephemeral hosted
-          # runner. Record the path, but do not require a direct peer-to-peer
-          # connection before continuing to the identity-bound SSH proof.
           tailscale ping --until-direct=false -c 3 "${TARGET_HOST}" \
             > "${EVIDENCE_DIR}/tailscale-ping.txt" 2>&1
-          probe_exit_code=$?
+          exit_code=$?
           set -e
           finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/reachability-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/reachability-finished-ns.txt"
+          exit "${exit_code}"
 
-          STARTED_NS="${started_ns}" FINISHED_NS="${finished_ns}" EXIT_CODE="${probe_exit_code}" \
-            python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          started = int(os.environ["STARTED_NS"])
-          finished = int(os.environ["FINISHED_NS"])
-          result = {
-              "target": os.environ["TARGET_HOST"],
-              "exit_code": int(os.environ["EXIT_CODE"]),
-              "duration_ms": round((finished - started) / 1_000_000, 3),
-              "status": "pass" if os.environ["EXIT_CODE"] == "0" else "fail",
-          }
-          Path(os.environ["EVIDENCE_DIR"], "tailscale-ping.json").write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-          exit "${probe_exit_code}"
-
-      - name: Prove identity-bound Tailscale SSH
-        id: ssh
+      - name: Prove identity-bound SSH and Docker access
+        id: target_access
+        if: steps.reachability.outcome == 'success'
+        continue-on-error: true
         run: |
           set -euo pipefail
           started_ns="$(date +%s%N)"
           set +e
           timeout 30s tailscale ssh "${TARGET_USER}@${TARGET_HOST}" \
             'printf "HOST="; hostname; printf "USER="; id -un; printf "DOCKER="; docker version --format "{{.Server.Version}}"' \
-            > "${EVIDENCE_DIR}/tailscale-ssh.txt" 2>&1
-          ssh_exit_code=$?
+            > "${EVIDENCE_DIR}/target-access.txt" 2>&1
+          exit_code=$?
           set -e
           finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/target-access-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/target-access-finished-ns.txt"
+          exit "${exit_code}"
 
-          STARTED_NS="${started_ns}" FINISHED_NS="${finished_ns}" EXIT_CODE="${ssh_exit_code}" \
-            python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          started = int(os.environ["STARTED_NS"])
-          finished = int(os.environ["FINISHED_NS"])
-          result = {
-              "target": os.environ["TARGET_HOST"],
-              "target_user": os.environ["TARGET_USER"],
-              "exit_code": int(os.environ["EXIT_CODE"]),
-              "duration_ms": round((finished - started) / 1_000_000, 3),
-              "status": "pass" if os.environ["EXIT_CODE"] == "0" else "fail",
-          }
-          Path(os.environ["EVIDENCE_DIR"], "tailscale-ssh.json").write_text(
-              json.dumps(result, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-          exit "${ssh_exit_code}"
-
-      - name: Finalize proof evidence
+      - name: Finalize sanitized evidence
         if: always()
         env:
           PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
-          WIF_OUTCOME: ${{ steps.wif.outcome }}
-          TAILSCALE_STATE_OUTCOME: ${{ steps.tailscale-state.outcome }}
-          PING_OUTCOME: ${{ steps.ping.outcome }}
-          SSH_OUTCOME: ${{ steps.ssh.outcome }}
+          OIDC_CLAIMS_OUTCOME: ${{ steps.oidc_claims.outcome }}
+          AUTH_OUTCOME: ${{ steps.authentication.outcome }}
+          STATE_OUTCOME: ${{ steps.tailscale_state.outcome }}
+          REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
+          TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
+          python3 scripts/research/finalize_auth_evidence.py \
+            --output "${EVIDENCE_DIR}/trial-evidence.json" \
+            --experiment-id "${INPUT_EXPERIMENT_ID}" \
+            --trial-id "${INPUT_TRIAL_ID}" \
+            --profile "${INPUT_PROFILE}" \
+            --scenario "${INPUT_SCENARIO}" \
+            --expected-decision "${INPUT_EXPECTED_DECISION}" \
+            --repetition "${INPUT_REPETITION}" \
+            --target "${INPUT_TARGET}" \
+            --preflight-outcome "${PREFLIGHT_OUTCOME}" \
+            --oidc-claims-outcome "${OIDC_CLAIMS_OUTCOME}" \
+            --auth-outcome "${AUTH_OUTCOME}" \
+            --state-outcome "${STATE_OUTCOME}" \
+            --reachability-outcome "${REACHABILITY_OUTCOME}" \
+            --target-access-outcome "${TARGET_ACCESS_OUTCOME}"
+
           date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/finished-at.txt"
-
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          outcomes = {
-              "preflight": os.environ["PREFLIGHT_OUTCOME"],
-              "wif_exchange_and_join": os.environ["WIF_OUTCOME"],
-              "tailscale_state": os.environ["TAILSCALE_STATE_OUTCOME"],
-              "target_ping": os.environ["PING_OUTCOME"],
-              "tailscale_ssh": os.environ["SSH_OUTCOME"],
-          }
-          success = all(value == "success" for value in outcomes.values())
-          summary = {
-              "configuration": "wif_basic",
-              "outcomes": outcomes,
-              "proof_result": "pass" if success else "fail",
-          }
-          evidence_dir = Path(os.environ["EVIDENCE_DIR"])
-          evidence_dir.joinpath("proof-summary.json").write_text(
-              json.dumps(summary, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
-              output.write("## WIF Connectivity Proof\n\n")
-              output.write(f"**Result:** {'PASS' if success else 'FAIL'}\n\n")
-              output.write("| Stage | Outcome |\n|---|---|\n")
-              for stage, outcome in outcomes.items():
-                  output.write(f"| `{stage}` | {outcome.upper()} |\n")
-              output.write("\nEvidence is available in the `wif-poc` workflow artifact.\n")
-          PY
-
           (
             cd "${EVIDENCE_DIR}"
             find . -maxdepth 1 -type f ! -name manifest.sha256 -print0 \
@@ -240,11 +284,44 @@ jobs:
               | xargs -0 sha256sum > manifest.sha256
           )
 
-      - name: Upload proof evidence
+      - name: Upload immutable trial evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: wif-poc-${{ github.run_id }}-${{ github.run_attempt }}
+          name: auth-experiment-${{ inputs.trial_id }}
           path: evidence/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
+
+      - name: Enforce the preregistered decision
+        if: always()
+        env:
+          AUTH_OUTCOME: ${{ steps.authentication.outcome }}
+          REACHABILITY_OUTCOME: ${{ steps.reachability.outcome }}
+          TARGET_ACCESS_OUTCOME: ${{ steps.target_access.outcome }}
+        run: |
+          set -euo pipefail
+          actual=deny
+          if [[ "${AUTH_OUTCOME}" == success && "${REACHABILITY_OUTCOME}" == success && "${TARGET_ACCESS_OUTCOME}" == success ]]; then
+            actual=allow
+          fi
+
+          if [[ "${actual}" != "${INPUT_EXPECTED_DECISION}" ]]; then
+            echo "Observed decision ${actual}; expected ${INPUT_EXPECTED_DECISION}" >&2
+            exit 1
+          fi
+
+  unsupported-profile:
+    name: Unsupported profile guard
+    if: inputs.profile != 'wif_basic'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Explain staged rollout
+        env:
+          INPUT_PROFILE: ${{ inputs.profile }}
+        run: |
+          echo "Profile '${INPUT_PROFILE}' is not enabled in pilot phase 1." >&2
+          echo "WIF basic is implemented and validated first; other profiles follow sequentially." >&2
+          exit 1

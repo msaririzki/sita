@@ -106,7 +106,7 @@ def main() -> None:
             "repository_owner_id": os.environ["GITHUB_REPOSITORY_OWNER_ID"],
             "ref": os.environ["GITHUB_REF"],
             "sha": os.environ["GITHUB_SHA"],
-            "workflow_ref": f'{os.environ["GITHUB_REPOSITORY"]}/.github/workflows/auth-experiment.yml@{os.environ["GITHUB_REF"]}',
+            "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
             "job_workflow_ref": None,
             "run_id": os.environ["GITHUB_RUN_ID"],
             "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
