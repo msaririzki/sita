@@ -88,6 +88,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${EVIDENCE_DIR}"
+          started_ns="$(date +%s%N)"
 
           python3 - <<'PY'
           import os
@@ -132,6 +133,9 @@ jobs:
               raise SystemExit("Dispatched ref does not resolve to commit_sha")
           PY
 
+          finished_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/preflight-started-ns.txt"
+          printf '%s\n' "${finished_ns}" > "${EVIDENCE_DIR}/preflight-finished-ns.txt"
           date -u +%Y-%m-%dT%H:%M:%S.%3NZ > "${EVIDENCE_DIR}/started-at.txt"
 
       - name: Select the controlled WIF audience
@@ -163,6 +167,9 @@ jobs:
           TS_WIF_AUDIENCE: ${{ steps.auth_policy.outputs.wif_audience }}
         run: |
           set -euo pipefail
+          started_ns="$(date +%s%N)"
+          printf '%s\n' "${started_ns}" > "${EVIDENCE_DIR}/oidc-claim-capture-started-ns.txt"
+          trap 'date +%s%N > "${EVIDENCE_DIR}/oidc-claim-capture-finished-ns.txt"' EXIT
           response="$(curl -fsS \
             -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["TS_WIF_AUDIENCE"], safe=""))')")"

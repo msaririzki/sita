@@ -120,8 +120,12 @@ def main() -> None:
         "oidc_claims": oidc_claims,
         "tailscale": tailscale,
         "stages": [
-            stage("preflight", args.preflight_outcome, 0.0),
-            stage("oidc_claim_capture", args.oidc_claims_outcome, 0.0),
+            stage("preflight", args.preflight_outcome, duration_ms(evidence_dir, "preflight")),
+            stage(
+                "oidc_claim_capture",
+                args.oidc_claims_outcome,
+                duration_ms(evidence_dir, "oidc-claim-capture"),
+            ),
             stage("wif_exchange_and_join", args.auth_outcome, duration_ms(evidence_dir, "authentication")),
             stage("target_reachability", args.reachability_outcome, duration_ms(evidence_dir, "reachability")),
             stage("tailscale_ssh", args.target_access_outcome, duration_ms(evidence_dir, "target-access")),
