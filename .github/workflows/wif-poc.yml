@@ -424,6 +424,7 @@ jobs:
           git fetch --depth=1 origin "$DEPLOY_COMMIT_SHA"
           git checkout --detach "$DEPLOY_COMMIT_SHA"
           COMPOSE_PROJECT_NAME=sita_wif_deploy \
+          SKIP_IMAGE_BUILD=true \
           HEALTHCHECK_URL=http://127.0.0.1:8098/up \
           bash scripts/deploy-via-compose.sh
           REMOTE

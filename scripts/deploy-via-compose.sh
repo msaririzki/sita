@@ -18,8 +18,12 @@ if [[ "${RUN_SECURITY_PREFLIGHT:-false}" = "true" ]]; then
         bash scripts/security-gate.sh
 fi
 
-echo "Building images locally..."
-docker compose "${compose_files[@]}" build app web init
+if [[ "${SKIP_IMAGE_BUILD:-false}" = "true" ]]; then
+    echo "Using the candidate image prepared before the authentication trial..."
+else
+    echo "Building images locally..."
+    docker compose "${compose_files[@]}" build app web init
+fi
 
 echo "Running init tasks (migrate/cache)..."
 docker compose "${compose_files[@]}" run --rm init init
