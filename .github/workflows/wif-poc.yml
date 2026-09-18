@@ -136,8 +136,10 @@ jobs:
                   raise SystemExit("Invalid ULID: " + key)
 
           expected_by_scenario = (
-              {"valid": "allow", "wrong_audience": "deny"}
-              if profile in {"wif_basic", "wif_multi_claim"}
+              {"valid": "allow", "wrong_audience": "deny", "wrong_branch": "deny"}
+              if profile == "wif_multi_claim"
+              else {"valid": "allow", "wrong_audience": "deny"}
+              if profile == "wif_basic"
               else {"valid": "allow"}
           )
           scenario = os.environ["INPUT_SCENARIO"]
@@ -194,6 +196,11 @@ jobs:
               ;;
             wrong_audience)
               effective_audience="${configured_audience}/controlled-mismatch"
+              ;;
+            wrong_branch)
+              # Keep the audience valid so the trust credential can reject only
+              # the branch and workflow claims carried by GitHub OIDC.
+              effective_audience="${configured_audience}"
               ;;
             *)
               echo "Unsupported scenario reached policy selection" >&2
