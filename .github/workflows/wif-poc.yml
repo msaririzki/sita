@@ -53,7 +53,7 @@ concurrency:
 jobs:
   authentication-trial:
     name: Authentication trial ${{ inputs.repetition }} (${{ inputs.profile }})
-    if: inputs.profile == 'wif_basic' || inputs.profile == 'oauth_static'
+    if: inputs.profile == 'wif_basic' || inputs.profile == 'wif_multi_claim' || inputs.profile == 'oauth_static'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -89,6 +89,8 @@ jobs:
         env:
           TS_WIF_CLIENT_ID: ${{ vars.TS_WIF_CLIENT_ID }}
           TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+          TS_WIF_MULTICLAIM_CLIENT_ID: ${{ vars.TS_WIF_MULTICLAIM_CLIENT_ID }}
+          TS_WIF_MULTICLAIM_AUDIENCE: ${{ vars.TS_WIF_MULTICLAIM_AUDIENCE }}
           TS_OAUTH_STATIC_CLIENT_ID: ${{ vars.TS_OAUTH_STATIC_CLIENT_ID }}
           TS_OAUTH_STATIC_SECRET: ${{ secrets.TS_OAUTH_STATIC_SECRET }}
         run: |
@@ -113,6 +115,11 @@ jobs:
                   "TS_WIF_CLIENT_ID": os.environ.get("TS_WIF_CLIENT_ID", ""),
                   "TS_WIF_AUDIENCE": os.environ.get("TS_WIF_AUDIENCE", ""),
               })
+          elif profile == "wif_multi_claim":
+              required.update({
+                  "TS_WIF_MULTICLAIM_CLIENT_ID": os.environ.get("TS_WIF_MULTICLAIM_CLIENT_ID", ""),
+                  "TS_WIF_MULTICLAIM_AUDIENCE": os.environ.get("TS_WIF_MULTICLAIM_AUDIENCE", ""),
+              })
           elif profile == "oauth_static":
               required.update({
                   "TS_OAUTH_STATIC_CLIENT_ID": os.environ.get("TS_OAUTH_STATIC_CLIENT_ID", ""),
@@ -130,7 +137,7 @@ jobs:
 
           expected_by_scenario = (
               {"valid": "allow", "wrong_audience": "deny"}
-              if profile == "wif_basic"
+              if profile in {"wif_basic", "wif_multi_claim"}
               else {"valid": "allow"}
           )
           scenario = os.environ["INPUT_SCENARIO"]
@@ -170,17 +177,23 @@ jobs:
 
       - name: Select the controlled WIF audience
         id: auth_policy
-        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
+        if: steps.preflight.outcome == 'success' && (inputs.profile == 'wif_basic' || inputs.profile == 'wif_multi_claim')
         env:
           TS_WIF_AUDIENCE: ${{ vars.TS_WIF_AUDIENCE }}
+          TS_WIF_MULTICLAIM_AUDIENCE: ${{ vars.TS_WIF_MULTICLAIM_AUDIENCE }}
         run: |
           set -euo pipefail
+          if [[ "${INPUT_PROFILE}" == 'wif_multi_claim' ]]; then
+            configured_audience="${TS_WIF_MULTICLAIM_AUDIENCE}"
+          else
+            configured_audience="${TS_WIF_AUDIENCE}"
+          fi
           case "${INPUT_SCENARIO}" in
             valid)
-              effective_audience="${TS_WIF_AUDIENCE}"
+              effective_audience="${configured_audience}"
               ;;
             wrong_audience)
-              effective_audience="${TS_WIF_AUDIENCE}/controlled-mismatch"
+              effective_audience="${configured_audience}/controlled-mismatch"
               ;;
             *)
               echo "Unsupported scenario reached policy selection" >&2
@@ -190,13 +203,13 @@ jobs:
           printf 'wif_audience=%s\n' "${effective_audience}" >> "${GITHUB_OUTPUT}"
 
       - name: Report OIDC claim reading started
-        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
+        if: steps.preflight.outcome == 'success' && (inputs.profile == 'wif_basic' || inputs.profile == 'wif_multi_claim')
         continue-on-error: true
         run: bash scripts/research/report_trial_progress.sh oidc_claim_capture running
 
       - name: Capture allowlisted OIDC claims without storing the token
         id: oidc_claims
-        if: steps.preflight.outcome == 'success' && inputs.profile == 'wif_basic'
+        if: steps.preflight.outcome == 'success' && (inputs.profile == 'wif_basic' || inputs.profile == 'wif_multi_claim')
         continue-on-error: true
         env:
           TS_WIF_AUDIENCE: ${{ steps.auth_policy.outputs.wif_audience }}
@@ -275,10 +288,10 @@ jobs:
         continue-on-error: true
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4
         with:
-          oauth-client-id: ${{ inputs.profile == 'oauth_static' && vars.TS_OAUTH_STATIC_CLIENT_ID || vars.TS_WIF_CLIENT_ID }}
+          oauth-client-id: ${{ inputs.profile == 'oauth_static' && vars.TS_OAUTH_STATIC_CLIENT_ID || (inputs.profile == 'wif_multi_claim' && vars.TS_WIF_MULTICLAIM_CLIENT_ID || vars.TS_WIF_CLIENT_ID) }}
           oauth-secret: ${{ inputs.profile == 'oauth_static' && secrets.TS_OAUTH_STATIC_SECRET || '' }}
-          audience: ${{ inputs.profile == 'wif_basic' && steps.auth_policy.outputs.wif_audience || '' }}
-          tags: ${{ inputs.profile == 'oauth_static' && 'tag:ci-oauth-static' || 'tag:ci-wif-basic' }}
+          audience: ${{ (inputs.profile == 'wif_basic' || inputs.profile == 'wif_multi_claim') && steps.auth_policy.outputs.wif_audience || '' }}
+          tags: ${{ inputs.profile == 'oauth_static' && 'tag:ci-oauth-static' || (inputs.profile == 'wif_multi_claim' && 'tag:ci-wif-multiclaim' || 'tag:ci-wif-basic') }}
 
       - name: Record authentication duration
         if: always() && steps.preflight.outcome == 'success'
@@ -569,7 +582,7 @@ jobs:
 
   unsupported-profile:
     name: Unsupported profile guard
-    if: inputs.profile != 'wif_basic' && inputs.profile != 'oauth_static'
+    if: inputs.profile != 'wif_basic' && inputs.profile != 'wif_multi_claim' && inputs.profile != 'oauth_static'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -579,5 +592,5 @@ jobs:
           INPUT_PROFILE: ${{ inputs.profile }}
         run: |
           echo "Profile '${INPUT_PROFILE}' is not enabled in pilot phase 1." >&2
-          echo "WIF basic and OAuth static are implemented; WIF multi-claim follows after its policy is configured." >&2
+          echo "WIF basic, OAuth static, and WIF multi-claim are implemented; each profile requires its own configured identity." >&2
           exit 1
